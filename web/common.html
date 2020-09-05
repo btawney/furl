@@ -7,6 +7,17 @@
     binding.getValue = function() {
       return binding.element.value;
     };
+    binding.element.addEventListener('focus', function(evt) {
+      binding.valueOnFocus = binding.element.value;
+    });
+    binding.element.addEventListener('blur', function(evt) {
+      if (binding.element.value != binding.valueOnFocus) {
+        binding.notifyChange();
+      }
+    });
+    binding.focus = function() {
+      binding.element.focus();
+    };
   </script>
 </class>
 
@@ -25,6 +36,35 @@
 
 <class name="list">
   <script>
+    binding.listPart = document.createElement('SPAN');
+
+    if ('add' in binding.attributes) {
+      binding.listPart = document.createElement('SPAN');
+      binding.addPart = document.createElement('SPAN');
+      binding.element.appendChild(binding.listPart);
+      binding.element.appendChild(binding.addPart);
+
+      var contentTemplate = namespace.get('CONTENT');
+
+      var button = document.createElement('BUTTON');
+      button.innerText = '+';
+      button.addEventListener('click', function(evt) {
+        var elementBinding = contentTemplate(null, null, null);
+        binding.model.push(elementBinding);
+        binding.listPart.appendChild(elementBinding.element);
+
+        if ('delete' in binding.attributes) {
+          binding.appendDeleteButton(elementBinding);
+        }
+
+        binding.notifyChange();
+        elementBinding.focus();
+      });
+      binding.addPart.appendChild(button);
+    } else {
+      binding.listPart = binding.element;
+    }
+
     binding.model = [];
     binding.getValue = function() {
       var result = [];
@@ -35,7 +75,7 @@
     };
     binding.setValue = function(v) {
       binding.model = [];
-      binding.element.innerHTML = '';
+      binding.listPart.innerHTML = '';
 
       var contentTemplate = namespace.get('CONTENT');
       if (contentTemplate != null) {
@@ -43,21 +83,13 @@
           if (('delimiter' in binding.attributes) && (i > 0)) {
             var span = document.createElement('SPAN');
             span.innerHTML = binding.attributes.delimiter;
-            binding.element.appendChild(span);
+            binding.listPart.appendChild(span);
           }
 
           var elementBinding = contentTemplate(null, null, null);
           binding.model.push(elementBinding);
-          binding.element.appendChild(elementBinding.element);
+          binding.listPart.appendChild(elementBinding.element);
           elementBinding.setValue(v[i]);
-
-          if ('delete' in binding.attributes) {
-            binding.appendDeleteButton(elementBinding);
-          }
-        }
-
-        if ('add' in binding.attributes) {
-          binding.appendAddButton(contentTemplate);
         }
       } else {
         binding.element.innerText = 'CONTENT is not defined';
@@ -69,30 +101,12 @@
       button.addEventListener('click', function(evt) {
         var modelIndex = binding.model.indexOf(elementBinding);
         binding.model.splice(modelIndex, 1);
-        binding.element.removeChild(elementBinding.element);
-        binding.element.removeChild(button);
+        binding.listPart.removeChild(elementBinding.element);
+        binding.listPart.removeChild(button);
+        binding.notifyChange();
       });
 
-      if (elementBinding.element.nextSibling == null) {
-        binding.element.appendChild(button);
-      } else {
-        binding.element.insertBefore(button, elementBinding.element.nextSibling);
-      }
-    };
-
-    binding.appendAddButton = function(contentTemplate) {
-      var button = document.createElement('BUTTON');
-      button.innerText = '+';
-      button.addEventListener('click', function(evt) {
-        var elementBinding = contentTemplate(null, null, null);
-        binding.model.push(elementBinding);
-        binding.element.insertBefore(elementBinding.element, button);
-
-        if ('delete' in binding.attributes) {
-          binding.appendDeleteButton(elementBinding);
-        }
-      });
-      binding.element.appendChild(button);
+      binding.listPart.appendChild(button);
     };
   </script>
 </class>

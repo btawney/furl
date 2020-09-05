@@ -1,6 +1,30 @@
 // furl.js
 
 var furl = (function() {
+  var data = {
+    collections: {},
+    getValue: function(collection, item) {
+      if (collection in data.collections) {
+        var c = data.collections[collection];
+        if (item in c) {
+          return c[item];
+        }
+      }
+
+      return null;
+    },
+    setValue: function(collection, item, value) {
+      if (collection in data.collections) {
+        var c = data.collections[collection];
+      } else {
+        var c = {};
+        data.collections[collection] = c;
+      }
+
+      c[item] = value;
+    }
+  };
+
   var namespace = function(par) {
     var ns = {
       parent: par,
@@ -82,6 +106,14 @@ var furl = (function() {
         }
       },
 
+      attributes: {},
+      copyAttributesFromElement: function(e) {
+        for (var i = 0; i < e.attributes.length; ++i) {
+          var attr = e.attributes[i];
+          binding.attributes[attr.name] = attr.value;
+        }
+      },
+
       // For percolating change messages up
       changeListeners: [],
       addChangeListener: function(f) {
@@ -94,6 +126,34 @@ var furl = (function() {
             f();
           } catch (error) {
             console.log(error);
+          }
+        }
+
+        if ('bind' in binding.attributes) {
+          var dataPath = binding.attributes['bind'];
+          var indexOfDot = dataPath.indexOf('.');
+          if (indexOfDot == -1) {
+            data.setValue('general', dataPath, binding.getValue());
+          } else {
+            var collection = dataPath.substr(0, indexOfDot);
+            var item = dataPath.substr(indexOfDot + 1);
+            data.setValue(collection, item, binding.getValue());
+          }
+        }
+      },
+
+      postInterpret: function() {
+        if ('bind' in binding.attributes) {
+          var dataPath = binding.attributes['bind'];
+          var indexOfDot = dataPath.indexOf('.');
+          if (indexOfDot == -1) {
+            var v = data.getValue('general', dataPath);
+            binding.setValue(v);
+          } else {
+            var collection = dataPath.substr(0, indexOfDot);
+            var item = dataPath.substr(indexOfDot + 1);
+            var v = data.getValue(collection, item);
+            binding.setValue(v);
           }
         }
       },
@@ -172,7 +232,12 @@ var furl = (function() {
         if ('name' in element.attributes) {
           var binding = docBinding.new();
           docBinding.model[element.attributes.name.value] = binding;
+
+          binding.copyAttributesFromElement(element);
+
           interpret(element, binding, ns.new());
+
+          binding.postInterpret();
         } else {
           interpret(element, docBinding, ns.new());
         }
@@ -190,27 +255,43 @@ var furl = (function() {
 
     var name = template.attributes.name.value;
     var interpreter = function(element, docBinding, includingNamespace) {
-      var ns = definingNamespace.new();
+      var instanceNamespace = definingNamespace.new();
 
       // The instance of the class is a child of the including document
       var instanceBinding = docBinding.new();
 
-      // Define the <CONTENT> tag
-      ns.set('CONTENT', function(e, b, n) {
+      // Define the <CONTENT> tag so it can be referenced within the class
+      instanceNamespace.set('CONTENT', function(e, b, n) {
         // Any instance of the content is a child of the instance of the class
         var contentBinding = instanceBinding.new();
-        interpret(element.innerHTML, contentBinding, includingNamespace.new());
+
+        if (e != null) {
+          contentBinding.copyAttributesFromElement(e);
+        }
+
+        var contentNamespace = includingNamespace.new();
+
+        // Any classes defined in the instance namespace will be available
+        // to the content namespace
+        for (var name in instanceNamespace) {
+          contentNamespace[name] = instanceNamespace[name];
+        }
+
+        interpret(element.innerHTML, contentBinding, contentNamespace);
+        contentBinding.postInterpret();
         return contentBinding;
       });
 
       // Copy attributes from element to binding
-      instanceBinding.attributes = {};
-      for (var i = 0; i < element.attributes.length; ++i) {
-        var attr = element.attributes[i];
-        instanceBinding.attributes[attr.name] = attr.value;
+      instanceBinding.copyAttributesFromElement(element);
+
+      if ('native' in template.attributes) {
+        instanceBinding.element = element;
       }
 
-      interpret(template.innerHTML, instanceBinding, ns.new());
+      interpret(template.innerHTML, instanceBinding, instanceNamespace);
+
+      instanceBinding.postInterpret();
 
       return instanceBinding;
     };
@@ -285,7 +366,11 @@ var furl = (function() {
     bind: function(markupOrNode) {
       var binding = newDocBinding();
       interpret(markupOrNode, binding, root.new());
+      binding.postInterpret();
       return binding;
+    },
+    getDataItem: function(collection, item) {
+      return data.getValue(collection, item);
     }
   };
 
