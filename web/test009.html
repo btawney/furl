@@ -1,0 +1,32 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+      function onLoad() {
+        binding = furl.bind(document.body);
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+  Instructions go here
+  <br />
+  <using src="common.html">
+    <table name="test009">
+      <thead>
+        <tr>
+          <td><b><u>Name</u></b></td>
+          <td align="right"><b><u>Age</u></b></td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input name="name" /></td>
+          <td><input name="age" /></td>
+        </tr>
+      </tbody>
+    </table>
+  </using>
+  <hr />
+  </body>
+</html>

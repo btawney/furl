@@ -1,0 +1,31 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+      function onLoad() {
+        furl.bind(document.body).then(function(b) {
+          binding = b;
+          binding.addChangeListener(function() {
+            console.log('Changed!');
+          });
+        });
+      }
+
+      function getValue() {
+        var v = furl.getDataItem('test007', 'parts');
+        var span = document.createElement('SPAN');
+        span.innerHTML = '<hr />' + JSON.stringify(v);
+        document.body.appendChild(span);
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+  Manipulate the list and check to see what value is stored in the data manager<hr />
+  <using src="common.html">
+    <list name="parts" bind="test007.parts" add delete><input /></list>
+  </using>
+  <hr />
+  <button onclick="getValue()">Get Value</button>
+  </body>
+</html>

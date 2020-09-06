@@ -1,0 +1,22 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+      function onLoad() {
+        furl.bind(document.body).then(function(b) {
+          binding = b;
+          binding.addChangeListener(function() {
+            console.log('Changed!');
+          });
+        });
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+  Manipulate the list and check for change messages in the console<hr />
+  <using src="common.html">
+    <list name="parts" add delete><b><input /></b></list>
+  </using>
+  </body>
+</html>

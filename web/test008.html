@@ -1,0 +1,20 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+      function onLoad() {
+        furl.bind(document.body).then(function(b) {
+          binding = b;
+        });
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+  The text below should be bold and italic. The word 'here' should be underlined. When you click on the word 'here' a message should appear in the console log.<br />
+  <using src="test008a.html">
+    <bi>Click on the word <clickable>here</clickable></bi>
+  </using>
+  <hr />
+  </body>
+</html>

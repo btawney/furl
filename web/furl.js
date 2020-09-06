@@ -1,6 +1,30 @@
 // furl.js
 
 var furl = (function() {
+  var data = {
+    collections: {},
+    getValue: function(collection, item) {
+      if (collection in data.collections) {
+        var c = data.collections[collection];
+        if (item in c) {
+          return c[item];
+        }
+      }
+
+      return null;
+    },
+    setValue: function(collection, item, value) {
+      if (collection in data.collections) {
+        var c = data.collections[collection];
+      } else {
+        var c = {};
+        data.collections[collection] = c;
+      }
+
+      c[item] = value;
+    }
+  };
+
   var namespace = function(par) {
     var ns = {
       parent: par,
@@ -21,6 +45,15 @@ var furl = (function() {
       },
       new: function() {
         return namespace(ns);
+      },
+      export: function(name, value) {
+        if ('exported' in ns) {
+          ns.exported[name] = value;
+        } else if (par != null) {
+          par.export(name, value);
+        } else {
+          console.log('Warning: EXPORT specified outside of library');
+        }
       }
     };
     return ns;
@@ -82,6 +115,14 @@ var furl = (function() {
         }
       },
 
+      attributes: {},
+      copyAttributesFromElement: function(e) {
+        for (var i = 0; i < e.attributes.length; ++i) {
+          var attr = e.attributes[i];
+          binding.attributes[attr.name] = attr.value;
+        }
+      },
+
       // For percolating change messages up
       changeListeners: [],
       addChangeListener: function(f) {
@@ -94,6 +135,38 @@ var furl = (function() {
             f();
           } catch (error) {
             console.log(error);
+          }
+        }
+
+        if ('bind' in binding.attributes) {
+          var dataPath = binding.attributes['bind'];
+          var indexOfDot = dataPath.indexOf('.');
+          if (indexOfDot == -1) {
+            data.setValue('general', dataPath, binding.getValue());
+          } else {
+            var collection = dataPath.substr(0, indexOfDot);
+            var item = dataPath.substr(indexOfDot + 1);
+            data.setValue(collection, item, binding.getValue());
+          }
+        }
+      },
+
+      postInterpret: function() {
+        if ('bind' in binding.attributes) {
+          var dataPath = binding.attributes['bind'];
+          var indexOfDot = dataPath.indexOf('.');
+          if (indexOfDot == -1) {
+            var v = data.getValue('general', dataPath);
+            if (v != null) {
+              binding.setValue(v);
+            }
+          } else {
+            var collection = dataPath.substr(0, indexOfDot);
+            var item = dataPath.substr(indexOfDot + 1);
+            var v = data.getValue(collection, item);
+            if (v != null) {
+              binding.setValue(v);
+            }
           }
         }
       },
@@ -119,32 +192,39 @@ var furl = (function() {
       }
     };
     return binding;
-  }
+  };
 
-  var interpret = function(markupOrNode, docBinding, ns) {
-    if (typeof(markupOrNode) == 'string') {
-      var container = document.createElement('SPAN');
-      container.innerHTML = markupOrNode;
-    } else {
-      container = markupOrNode;
-    }
+  var promise = function() {
+    var p = {
+      fulfilled: null,
+      fulfill: function(p1, p2, p3, p4, p5) {
+        if (p.nextCall != null) {
+          p.nextCall(p1, p2, p3, p4, p5);
+        } else {
+          p.fulfilled = [p1, p2, p3, p4, p5];
+        }
+      },
+      nextCall: null,
+      then: function(f) {
+        if (p.fulfilled != null) {
+          f(p.fulfilled[0], p.fulfilled[1], p.fulfilled[2], p.fulfilled[3],
+            p.fulfilled[4]);
+        } else {
+          p.nextCall = f;
+        }
+      }
+    };
+    return p;
+  };
 
-    if (docBinding.element == null) {
-      docBinding.element = container;
-    }
+  var processOneElement = function(element, docBinding, ns) {
+    var prom = promise();
+    var container = element.parentElement;
 
-    var toProcess = [];
-    for (var i = 0; i < container.children.length; ++i) {
-      var element = container.children[i];
-      toProcess.push(element);
-    }
-
-    for (var i = 0; i < toProcess.length; ++i) {
-      var element = toProcess[i];
-
-      var interpreter = ns.get(element.tagName, null);
-      if (interpreter != null) {
-        var binding = interpreter(element, docBinding, ns.new());
+    var interpreter = ns.get(element.tagName, null);
+    if (interpreter != null) {
+//console.log('222: Tag found for: ' + element.tagName);
+      interpreter(element, docBinding, ns).then(function(binding) {
         var bindsToExistingElement = false;
 
         if (binding != null) {
@@ -168,70 +248,159 @@ var furl = (function() {
         if (!bindsToExistingElement) {
           container.removeChild(element);
         }
+
+        prom.fulfill(binding);
+      });
+    } else {
+      if ('name' in element.attributes) {
+//console.log('252: Tag not found in namespace: ' + element.tagName);
+//console.log(ns);
+        var binding = docBinding.new();
+        docBinding.model[element.attributes.name.value] = binding;
+
+        binding.copyAttributesFromElement(element);
+
+        // Should this call processOneElement?
+        interpret(element, binding, ns).then(function(b) {
+          binding.postInterpret();
+          prom.fulfill(binding);
+        });
       } else {
-        if ('name' in element.attributes) {
-          var binding = docBinding.new();
-          docBinding.model[element.attributes.name.value] = binding;
-          interpret(element, binding, ns.new());
-        } else {
-          interpret(element, docBinding, ns.new());
-        }
+        interpret(element, docBinding, ns).then(function(b) {
+          prom.fulfill(b);
+        });
       }
     }
+
+    return prom;
+  };
+
+  var interpret = function(markupOrNode, docBinding, ns) {
+    var interpreterPromise = promise();
+
+    if (typeof(markupOrNode) == 'string') {
+      var container = document.createElement('SPAN');
+      container.innerHTML = markupOrNode;
+    } else {
+      container = markupOrNode;
+    }
+
+    if (docBinding.element == null) {
+      docBinding.element = container;
+    }
+
+    var recurseAcrossSiblings = function(element) {
+      if (element == null) {
+        interpreterPromise.fulfill();
+      } else {
+        var nextSibling = element.nextElementSibling;
+
+        processOneElement(element, docBinding, ns).then(function() {
+          recurseAcrossSiblings(nextSibling);
+        });
+      }
+    };
+
+    recurseAcrossSiblings(container.firstElementChild);
+
+    return interpreterPromise;
   };
 
   var root = namespace();
+  root.newLibraryNamespace = function() {
+    var ns = root.new();
+    ns.exported = {};
+    return ns;
+  };
 
   root.set('CLASS', function(template, docBinding, definingNamespace) {
+    var classPromise = promise();
+
     if (!('name' in template.attributes)) {
       console.log('Error: CLASS requires a NAME attribute');
-      return null;
+      classPromise.fulfull(null);
+      return classPromise;
     }
+
+//console.log('321: CLASS ' + template.attributes.name.value);
 
     var name = template.attributes.name.value;
     var interpreter = function(element, docBinding, includingNamespace) {
-      var ns = definingNamespace.new();
+      var instancePromise = promise();
+      var instanceNamespace = definingNamespace.new();
 
       // The instance of the class is a child of the including document
       var instanceBinding = docBinding.new();
 
-      // Define the <CONTENT> tag
-      ns.set('CONTENT', function(e, b, n) {
+      // Define the <CONTENT> tag so it can be referenced within the class
+      instanceNamespace.set('CONTENT', function(e, b, n) {
+        var contentPromise = promise();
+
         // Any instance of the content is a child of the instance of the class
         var contentBinding = instanceBinding.new();
-        interpret(element.innerHTML, contentBinding, includingNamespace.new());
-        return contentBinding;
+
+        if (e != null) {
+          contentBinding.copyAttributesFromElement(e);
+        }
+
+        var contentNamespace = includingNamespace.new();
+
+        // Any classes defined in the instance namespace will be available
+        // to the content namespace
+        for (var name in instanceNamespace) {
+          contentNamespace[name] = instanceNamespace[name];
+        }
+
+        interpret(element.innerHTML, contentBinding, contentNamespace).then(
+          function(b) {
+            contentBinding.postInterpret();
+            contentPromise.fulfill(contentBinding);
+          });
+
+        return contentPromise;
       });
 
       // Copy attributes from element to binding
-      instanceBinding.attributes = {};
-      for (var i = 0; i < element.attributes.length; ++i) {
-        var attr = element.attributes[i];
-        instanceBinding.attributes[attr.name] = attr.value;
+      instanceBinding.copyAttributesFromElement(element);
+
+      if ('native' in template.attributes) {
+        instanceBinding.element = element;
       }
 
-      interpret(template.innerHTML, instanceBinding, ns.new());
+      interpret(template.innerHTML, instanceBinding, instanceNamespace).then(
+        function(b) {
+          instanceBinding.postInterpret();
+          instancePromise.fulfill(instanceBinding);
+        });
 
-      return instanceBinding;
+      return instancePromise;
     };
 
+    // Make the class available to its neighbors
     if (definingNamespace.parent == null) {
       definingNamespace.set(name, interpreter);
     } else {
       definingNamespace.parent.set(name, interpreter);
     }
 
-    return null;
+    // Export the class to users of its library
+    if ('export' in template.attributes) {
+      definingNamespace.export(name, interpreter);
+    }
+
+    classPromise.fulfill(null);
+
+    return classPromise;
   });
+
   root.set('USING', function(element, docBinding, declaringNamespace) {
+    var prom = promise();
+
     if (!('src' in element.attributes)) {
       console.log('Error: USING requires a SRC attribute');
       return null;
     }
-
-    var binding = docBinding.new();
-    binding.element = document.createElement('SPAN');
-    binding.element.innerText = 'Loading...';
+//console.log('399: USING ' + element.attributes.src.value);
 
     var xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
@@ -239,53 +408,74 @@ var furl = (function() {
         if (xhttp.status == 200) {
           // Library bindings don't need parents
           var libraryBinding = newDocBinding();
-          var libraryNamespace = root.new();
-          interpret(xhttp.responseText, libraryBinding, libraryNamespace);
+          var libraryNamespace = root.newLibraryNamespace();
+          interpret(xhttp.responseText, libraryBinding, libraryNamespace)
+            .then(function(b) {
+              // Import everything from the library into this namespace
+              var contentNamespace = declaringNamespace.new();
+              for (var name in libraryNamespace.exported) {
+                contentNamespace.set(name, libraryNamespace.exported[name]);
+              }
 
-          var contentNamespace = declaringNamespace.new();
-          for (var name in libraryNamespace.vars) {
-            contentNamespace.set(name, libraryNamespace.vars[name]);
-          }
+              var newElement = document.createElement('SPAN');
+              newElement.innerHTML = element.innerHTML;
 
-          var newElement = document.createElement('SPAN');
-          newElement.innerHTML = element.innerHTML;
+              var binding = docBinding.new();
+              interpret(newElement, binding, contentNamespace).then(function(b) {
+                binding.setValue(binding.original);
 
-          interpret(newElement, binding, contentNamespace);
-          binding.setValue(binding.original);
+                if (binding.element.parentElement != null) {
+                  var par = binding.element.parentElement;
+                  par.insertBefore(newElement, binding.element);
+                  par.removeChild(binding.element);
+                }
+                binding.element = newElement;
 
-          if (binding.element.parentElement != null) {
-            var par = binding.element.parentElement;
-            par.insertBefore(newElement, binding.element);
-            par.removeChild(binding.element);
-          }
-          binding.element = newElement;
+                for (var name in binding.model) {
+                  docBinding.model[name] = binding.model[name];
+                }
 
-          for (var name in binding.model) {
-            docBinding.model[name] = binding.model[name];
-          }
+//console.log('434: Fulfilling promise for USING ' + element.attributes.src.value);
+                prom.fulfill(binding);
+              });
+            });
         } else {
-          binding.element.innerText = 'Error retrieving remote content: '
-            + xhttp.status.toString();
+          console.log('Error retrieving remote content: '
+            + xhttp.status.toString());
+          prom.fulfill(null);
         }
       }
     };
     xhttp.open('GET', element.attributes.src.value, true);
     xhttp.send();
 
-    return binding;
+    return prom;
   });
   root.set('SCRIPT', function(element, docBinding, namespace) {
+    var prom = promise();
+
     var code = 'var fn = function(binding, namespace) {'
       + element.innerText + '};';
     eval(code);
     fn(docBinding, namespace);
+
+    prom.fulfill(null);
+
+    return prom;    
   });
 
   var furl = {
     bind: function(markupOrNode) {
+      var prom = promise();
       var binding = newDocBinding();
-      interpret(markupOrNode, binding, root.new());
-      return binding;
+      interpret(markupOrNode, binding, root.new()).then(function(b) {
+        binding.postInterpret();
+        prom.fulfill(binding);
+      });
+      return prom;
+    },
+    getDataItem: function(collection, item) {
+      return data.getValue(collection, item);
     }
   };
 

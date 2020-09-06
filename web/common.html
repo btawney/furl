@@ -1,6 +1,6 @@
-<class name="input">
+<class name="input" native export>
   <script>
-    binding.element = document.createElement('INPUT');
+    //binding.element = document.createElement('INPUT');
     binding.setValue = function(v) {
       binding.element.value = v.toString();
     };
@@ -21,7 +21,7 @@
   </script>
 </class>
 
-<class name="literal">
+<class name="literal" export>
   <script>
     binding.original = '';
     binding.setValue = function(v) {
@@ -34,7 +34,7 @@
   </script>
 </class>
 
-<class name="list">
+<class name="list" export>
   <script>
     binding.listPart = document.createElement('SPAN');
 
@@ -49,16 +49,18 @@
       var button = document.createElement('BUTTON');
       button.innerText = '+';
       button.addEventListener('click', function(evt) {
-        var elementBinding = contentTemplate(null, null, null);
-        binding.model.push(elementBinding);
-        binding.listPart.appendChild(elementBinding.element);
+        contentTemplate(null, null, null)
+          .then(function(elementBinding) {
+            binding.model.push(elementBinding);
+            binding.listPart.appendChild(elementBinding.element);
 
-        if ('delete' in binding.attributes) {
-          binding.appendDeleteButton(elementBinding);
-        }
+            if ('delete' in binding.attributes) {
+              binding.appendDeleteButton(elementBinding);
+            }
 
-        binding.notifyChange();
-        elementBinding.focus();
+            binding.notifyChange();
+            elementBinding.focus();
+          });
       });
       binding.addPart.appendChild(button);
     } else {
@@ -86,10 +88,16 @@
             binding.listPart.appendChild(span);
           }
 
-          var elementBinding = contentTemplate(null, null, null);
-          binding.model.push(elementBinding);
-          binding.listPart.appendChild(elementBinding.element);
-          elementBinding.setValue(v[i]);
+          contentTemplate(null, null, null)
+            .then(function(elementBinding) {
+              binding.model.push(elementBinding);
+              binding.listPart.appendChild(elementBinding.element);
+              elementBinding.setValue(v[i]);
+
+              if ('delete' in binding.attributes) {
+                binding.appendDeleteButton(elementBinding);
+              }
+            });
         }
       } else {
         binding.element.innerText = 'CONTENT is not defined';
@@ -109,4 +117,8 @@
       binding.listPart.appendChild(button);
     };
   </script>
+</class>
+
+<class name="table" native export>
+  <content />
 </class>

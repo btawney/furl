@@ -1,0 +1,35 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+      function onLoad() {
+        furl.bind(document.body).then(function(b) {
+          binding = b;
+        });
+      }
+
+      function test005_1() {
+        binding.model.parts.setValue(['a', 'b', 'c']);
+      }
+
+      function test005_2() {
+        var x = binding.model.parts.getValue();
+        var span = document.createElement('span');
+        span.innerText = JSON.stringify(x);
+        document.body.appendChild(document.createElement('HR'));
+        document.body.appendChild(span);
+        binding.model.readonly.setValue(x);
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+  <using src="common.html">
+    <list name="parts" add delete><b><input /></b></list>
+    <hr />
+    <list name="readonly" delimiter=", "><literal /></list>
+  </using>
+  <button onclick="test005_1()">Set</button>
+  <button onclick="test005_2()">Get</button>
+  </body>
+</html>
