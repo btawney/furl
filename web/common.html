@@ -120,5 +120,77 @@
 </class>
 
 <class name="table" native export>
-  <content />
+  <script>
+    // Only fiddle with this table if it is named. Don't mess with other
+    // unnamed tables that the user might have put onto the page. The reason
+    // for that is that we remove a trow when we process this table.
+    if (!('name' in binding.attributes)) {
+      return;
+    }
+
+    // The first tr inside a tbody will be treated as a template
+    binding.tBody = null;
+    binding.rowTemplate  = null;
+
+    for (var i = 0; i < binding.element.tBodies.length; ++i) {
+      binding.tBody = binding.element.tBodies[i];
+      for (var j = 0; j < binding.tBody.rows.length; ++j) {
+        binding.rowTemplate = binding.tBody.rows[j];
+        binding.tBody.removeChild(binding.rowTemplate);
+        break;        
+      }
+      if (binding.rowTemplate != null) {
+        break;
+      }
+    }
+
+    if (binding.rowTemplate == null) {
+      return;
+    }
+
+    binding.model = [];
+    binding.setValue = function(v) {
+      binding.tBody.innerHTML = '';
+
+      function recurse(i) {
+        if(i == 0) {
+          return;
+        }
+        var newRow = binding.rowTemplate.cloneNode(true);
+
+        binding.tBody.appendChild(newRow);
+        processOneElement(newRow, binding, namespace.new()).then(function(b) {
+          binding.model.push(b);
+          b.setValue(v[v.length - i]);
+          if ('delete' in binding.attributes) {
+            binding.appendDeleteButton(b);
+          }
+          recurse(i - 1);
+        });
+      };
+
+      recurse(v.length);
+    };
+    binding.getValue = function() {
+      var result = [];
+      for (var i = 0; i < binding.model.length; ++i) {
+        result.push(binding.model[i].getValue());
+      }
+      return result;
+    };
+
+    binding.appendDeleteButton = function(rowBinding) {
+      var button = document.createElement('BUTTON');
+      button.innerText = 'X';
+      button.addEventListener('click', function(evt) {
+        var modelIndex = binding.model.indexOf(rowBinding);
+        binding.model.splice(modelIndex, 1);
+        binding.tBody.removeChild(rowBinding.element);
+        binding.notifyChange();
+      });
+
+      var cell = rowBinding.element.insertCell();
+      cell.appendChild(button);
+    };
+  </script>
 </class>

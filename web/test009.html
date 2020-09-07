@@ -4,15 +4,33 @@
     <script>
       var binding = null;
       function onLoad() {
-        binding = furl.bind(document.body);
+        furl.bind(document.body).then(function(b) {
+          binding = b;
+        });
+      }
+
+      function setValue() {
+        binding.setValue({test009: [
+          {name: 'Jack', age: 31},
+          {name: 'Sam', age: 20},
+          {name: 'Trotter', age: 82}
+        ]});
+      }
+
+      function getValue() {
+        var x = binding.getValue();
+        var span = document.createElement('span');
+        span.innerText = JSON.stringify(x);
+        document.body.appendChild(document.createElement('HR'));
+        document.body.appendChild(span);
       }
     </script>
   </head>
   <body onload="onLoad()">
-  Instructions go here
+  Click Set Value, change some things, click Get Value
   <br />
   <using src="common.html">
-    <table name="test009">
+    <table name="test009" delete>
       <thead>
         <tr>
           <td><b><u>Name</u></b></td>
@@ -20,13 +38,16 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
+        <tr name="r">
           <td><input name="name" /></td>
           <td><input name="age" /></td>
         </tr>
       </tbody>
     </table>
   </using>
+  <hr />
+  <button onclick="setValue()">Set Value</button>
+  <button onclick="getValue()">Get Value</button>
   <hr />
   </body>
 </html>
