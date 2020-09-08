@@ -119,15 +119,8 @@
   </script>
 </class>
 
-<class name="table" native export>
+<class name="table.dynamic" native export>
   <script>
-    // Only fiddle with this table if it is named. Don't mess with other
-    // unnamed tables that the user might have put onto the page. The reason
-    // for that is that we remove a trow when we process this table.
-    if (!('name' in binding.attributes)) {
-      return;
-    }
-
     // The first tr inside a tbody will be treated as a template
     binding.tBody = null;
     binding.rowTemplate  = null;
@@ -192,5 +185,32 @@
       var cell = rowBinding.element.insertCell();
       cell.appendChild(button);
     };
+
+    if ('add' in binding.attributes) {
+      var addBody = document.createElement('TBODY');
+      if (binding.tBody.nextElementSibling == null) {
+        binding.element.appendChild(addBody);
+      } else {
+        binding.element.insertBefore(addBody, binding.tBody.nextElementSibling);
+      }
+      var row = addBody.insertRow();
+      var cell = row.insertCell();
+      cell.colSpan = 100;
+      cell.style.textAlign = 'CENTER';
+      var button = document.createElement('BUTTON');
+      button.innerText = 'Add';
+      cell.appendChild(button);
+      cell.addEventListener('click', function(evt) {
+        var newRow = binding.rowTemplate.cloneNode(true);
+
+        binding.tBody.appendChild(newRow);
+        processOneElement(newRow, binding, namespace.new()).then(function(b) {
+          binding.model.push(b);
+          if ('delete' in binding.attributes) {
+            binding.appendDeleteButton(b);
+          }
+        });
+      });
+    }
   </script>
 </class>

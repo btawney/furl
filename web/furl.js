@@ -221,7 +221,14 @@ var furl = (function() {
     var prom = promise();
     var container = element.parentElement;
 
-    var interpreter = ns.get(element.tagName, null);
+    if ('ftype' in element.attributes) {
+      var fullTagName = element.tagName + '.'
+        + element.attributes.ftype.value.toUpperCase();
+    } else {
+      var fullTagName = element.tagName;
+    }
+
+    var interpreter = ns.get(fullTagName, null);
     if (interpreter != null) {
 //console.log('222: Tag found for: ' + element.tagName);
       interpreter(element, docBinding, ns).then(function(binding) {
@@ -260,13 +267,12 @@ var furl = (function() {
 
         binding.copyAttributesFromElement(element);
 
-        // Should this call processOneElement?
-        interpret(element, binding, ns).then(function(b) {
+        processChildNodes(element, binding, ns).then(function(b) {
           binding.postInterpret();
           prom.fulfill(binding);
         });
       } else {
-        interpret(element, docBinding, ns).then(function(b) {
+        processChildNodes(element, docBinding, ns).then(function(b) {
           prom.fulfill(b);
         });
       }
@@ -275,7 +281,7 @@ var furl = (function() {
     return prom;
   };
 
-  var interpret = function(markupOrNode, docBinding, ns) {
+  var processChildNodes = function(markupOrNode, docBinding, ns) {
     var interpreterPromise = promise();
 
     if (typeof(markupOrNode) == 'string') {
@@ -306,6 +312,12 @@ var furl = (function() {
     return interpreterPromise;
   };
 
+  var processMarkup = function(markup, docBinding, ns) {
+    var container = document.createElement('SPAN');
+    container.innerHTML = markup;
+    return processChildNodes(container, docBinding, ns);
+  };
+
   var root = namespace();
   root.newLibraryNamespace = function() {
     var ns = root.new();
@@ -324,7 +336,6 @@ var furl = (function() {
 
 //console.log('321: CLASS ' + template.attributes.name.value);
 
-    var name = template.attributes.name.value;
     var interpreter = function(element, docBinding, includingNamespace) {
       var instancePromise = promise();
       var instanceNamespace = definingNamespace.new();
@@ -351,7 +362,7 @@ var furl = (function() {
           contentNamespace[name] = instanceNamespace[name];
         }
 
-        interpret(element.innerHTML, contentBinding, contentNamespace).then(
+        processMarkup(element.innerHTML, contentBinding, contentNamespace).then(
           function(b) {
             contentBinding.postInterpret();
             contentPromise.fulfill(contentBinding);
@@ -367,7 +378,7 @@ var furl = (function() {
         instanceBinding.element = element;
       }
 
-      interpret(template.innerHTML, instanceBinding, instanceNamespace).then(
+      processMarkup(template.innerHTML, instanceBinding, instanceNamespace).then(
         function(b) {
           instanceBinding.postInterpret();
           instancePromise.fulfill(instanceBinding);
@@ -376,16 +387,18 @@ var furl = (function() {
       return instancePromise;
     };
 
+    var tagName = template.attributes.name.value;
+
     // Make the class available to its neighbors
     if (definingNamespace.parent == null) {
-      definingNamespace.set(name, interpreter);
+      definingNamespace.set(tagName, interpreter);
     } else {
-      definingNamespace.parent.set(name, interpreter);
+      definingNamespace.parent.set(tagName, interpreter);
     }
 
     // Export the class to users of its library
     if ('export' in template.attributes) {
-      definingNamespace.export(name, interpreter);
+      definingNamespace.export(tagName, interpreter);
     }
 
     classPromise.fulfill(null);
@@ -409,7 +422,7 @@ var furl = (function() {
           // Library bindings don't need parents
           var libraryBinding = newDocBinding();
           var libraryNamespace = root.newLibraryNamespace();
-          interpret(xhttp.responseText, libraryBinding, libraryNamespace)
+          processMarkup(xhttp.responseText, libraryBinding, libraryNamespace)
             .then(function(b) {
               // Import everything from the library into this namespace
               var contentNamespace = declaringNamespace.new();
@@ -421,7 +434,7 @@ var furl = (function() {
               newElement.innerHTML = element.innerHTML;
 
               var binding = docBinding.new();
-              interpret(newElement, binding, contentNamespace).then(function(b) {
+              processOneElement(newElement, binding, contentNamespace).then(function(b) {
                 binding.setValue(binding.original);
 
                 if (binding.element.parentElement != null) {
@@ -465,10 +478,19 @@ var furl = (function() {
   });
 
   var furl = {
-    bind: function(markupOrNode) {
+    processChildren: processChildNodes,
+    processMarkup: processMarkup,
+    processElement: processOneElement,
+    process: function(markupOrNode) {
       var prom = promise();
       var binding = newDocBinding();
-      interpret(markupOrNode, binding, root.new()).then(function(b) {
+
+      if (typeof(markupOrNode) == 'string') {
+        var p = processMarkup(markupOrNode, binding, root.new());
+      } else {
+        var p = processOneElement(markupOrNode, binding, root.new());
+      }
+      p.then(function(b) {
         binding.postInterpret();
         prom.fulfill(binding);
       });

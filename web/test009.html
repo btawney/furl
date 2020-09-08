@@ -4,7 +4,7 @@
     <script>
       var binding = null;
       function onLoad() {
-        furl.bind(document.body).then(function(b) {
+        furl.process(document.body).then(function(b) {
           binding = b;
         });
       }
@@ -30,7 +30,21 @@
   Click Set Value, change some things, click Get Value
   <br />
   <using src="common.html">
-    <table name="test009" delete>
+    <table name="test009" delete ftype="dynamic" add>
+      <thead>
+        <tr>
+          <td><b><u>Name</u></b></td>
+          <td align="right"><b><u>Age</u></b></td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr name="r">
+          <td><input name="name" /></td>
+          <td><input name="age" /></td>
+        </tr>
+      </tbody>
+    </table>
+    <table name="test009b">
       <thead>
         <tr>
           <td><b><u>Name</u></b></td>
