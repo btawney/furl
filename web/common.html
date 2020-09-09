@@ -214,3 +214,34 @@
     }
   </script>
 </class>
+
+<class name="router" export>
+  <class name="page">
+    <content />
+  </class>
+  <script>
+    // Process the content and copy the content binding model to the model
+    // for the tag itself
+    var contentInterpreter = namespace.get('CONTENT');
+    if (contentInterpreter != null) {
+      contentInterpreter(null, null, null).then(function(b) {
+        binding.model = b.model;
+      });
+    }
+
+    // Calling setValue on a router makes it show the specified page
+    binding.setValue = function(pageName) {
+      binding.element.innerHTML = '';
+
+      if (pageName in binding.model) {
+        binding.element.appendChild(binding.model[pageName].element);
+      } else if ('default' in binding.model) {
+        binding.element.appendChild(binding.model.default.element);
+      }
+    }
+
+    window.addEventListener('popstate', function(evt) {
+      binding.setValue(document.location.hash.substr(1));
+    });
+  </script>
+</class>

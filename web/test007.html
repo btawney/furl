@@ -13,7 +13,7 @@
       }
 
       function getValue() {
-        var v = furl.getDataItem('test007', 'parts');
+        var v = furl.data.getValue('test007', 'parts');
         var span = document.createElement('SPAN');
         span.innerHTML = '<hr />' + JSON.stringify(v);
         document.body.appendChild(span);

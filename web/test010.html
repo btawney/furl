@@ -1,0 +1,38 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+      function onLoad() {
+        furl.process(document.body).then(function(b) {
+          binding = b;
+        });
+      }
+
+      function setPage(p) {
+        binding.setValue({test010: 'p' + p.toString()});
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+  Click a button or link, see the router change
+  <br />
+  <button onclick="setPage(1)">Page 1</button>
+  <button onclick="setPage(2)">Page 2</button>
+  <button onclick="setPage(3)">Page 3</button>
+  <hr />
+  <a href="#p1">Page 1</a>
+  <a href="#p2">Page 2</a>
+  <a href="#p3">Page 3</a>
+  <a href="#nosuch">Page Nosuch</a>
+  <hr />
+  <using src="common.html">
+    <router name="test010">
+      <page name="p1">This is page 1</page>
+      <page name="p2">This is page 2</page>
+      <page name="p3">This is page 3</page>
+      <page name="default">This is the default page</page>
+    </router>
+  </using>
+  </body>
+</html>

@@ -2,7 +2,12 @@
 
 var furl = (function() {
   var data = {
+    sessionId: 'dummy',
     collections: {},
+    pendingUpdateQueues: [],
+    updateQueue: {},
+    pendingDeleteQueues: [],
+    deleteQueue: {},
     getValue: function(collection, item) {
       if (collection in data.collections) {
         var c = data.collections[collection];
@@ -22,8 +27,121 @@ var furl = (function() {
       }
 
       c[item] = value;
+
+      if (collection in data.updateQueue) {
+        var q = data.updateQueue[collection];
+      } else {
+        var q = {};
+        data.updateQueue[collection] = q;
+      }
+
+      q[item] = value;
+    },
+    deleteValue: function(collection, item) {
+      if (collection in data.collections) {
+        var c = data.collections[collection];
+      } else {
+        return;
+      }
+
+      if (item in c) {
+        data.deleteQueue[item] = c[item];
+        delete c[item];
+      }
+    },
+    processQueue: function() {
+      if (data.sessionId == '') {
+        return;
+      }
+
+      var anythingToDo = false;
+      for (var c in data.updateQueue) {
+        if (anythingToDo) {
+          break;
+        }
+        for (var i in data.updateQueue[c]) {
+          anythingToDo = true;
+          break;
+        }
+      }
+
+      for (var c in data.deleteQueue) {
+        if (anythingToDo) {
+          break;
+        }
+        for (var i in data.deleteQueue[c]) {
+          anythingToDo = true;
+          break;
+        }
+      }
+
+      if (!anythingToDo) {
+//console.log('Nothing to do');
+        return;
+      }
+//console.log('Processing queue');
+
+      data.pendingUpdateQueues.push(data.updateQueue);
+      data.pendingDeleteQueues.push(data.deleteQueue);
+
+      data.updateQueue = {};
+      data.deleteQueue = {};
+
+      var message = {
+        sessionId: data.sessionId,
+        updates: {},
+        deletes: {}
+      };
+
+      for (var i = 0; i < data.pendingUpdateQueues.length; ++i) {
+        var uq = data.pendingUpdateQueues[i];
+        for (var c in uq) {
+          var queueCollection = uq[c];
+          var messageCollection = {};
+          message.updates[c] = messageCollection;
+          for (var i in queueCollection) {
+            messageCollection[i] = JSON.stringify(queueCollection[i]);
+          }
+        }
+      }
+
+      for (var i = 0; i < data.pendingDeleteQueues.length; ++i) {
+        var dq = data.pendingDeleteQueues[i];
+        for (var c in dq) {
+          var queueCollection = dq[c];
+          var messageCollection = {};
+          message.deletes[c] = messageCollection;
+          for (var i in queueCollection) {
+            messageCollection[i] = JSON.stringify(queueCollection[i]);
+          }
+        }
+      }
+
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (xhttp.readyState == 4) {
+          if (xhttp.status == 200) {
+            if (xhttp.responseText.trim() != 'ok') {
+              console.log(xhttp.responseText);
+            } else {
+              // Small risk that a second update will start while a prior one
+              // is still waiting to process. Address with locking?
+              data.pendingUpdateQueues = [];
+              data.pendingDeleteQueues = [];
+            }
+          } else {
+            console.log('Error flushing write queue: ' + xhttp.status.toString());
+          }
+        }
+      };
+
+      xhttp.open('PUT', 'update.php', true);
+//console.log(JSON.stringify(message));
+      xhttp.send(JSON.stringify(message));
     }
   };
+
+  window.setInterval(data.processQueue, 10000);
 
   var namespace = function(par) {
     var ns = {
@@ -267,12 +385,12 @@ var furl = (function() {
 
         binding.copyAttributesFromElement(element);
 
-        processChildNodes(element, binding, ns).then(function(b) {
+        processChildElements(element, binding, ns).then(function(b) {
           binding.postInterpret();
           prom.fulfill(binding);
         });
       } else {
-        processChildNodes(element, docBinding, ns).then(function(b) {
+        processChildElements(element, docBinding, ns).then(function(b) {
           prom.fulfill(b);
         });
       }
@@ -281,7 +399,7 @@ var furl = (function() {
     return prom;
   };
 
-  var processChildNodes = function(markupOrNode, docBinding, ns) {
+  var processChildElements = function(markupOrNode, docBinding, ns) {
     var interpreterPromise = promise();
 
     if (typeof(markupOrNode) == 'string') {
@@ -315,7 +433,7 @@ var furl = (function() {
   var processMarkup = function(markup, docBinding, ns) {
     var container = document.createElement('SPAN');
     container.innerHTML = markup;
-    return processChildNodes(container, docBinding, ns);
+    return processChildElements(container, docBinding, ns);
   };
 
   var root = namespace();
@@ -478,7 +596,7 @@ var furl = (function() {
   });
 
   var furl = {
-    processChildren: processChildNodes,
+    processChildren: processChildElements,
     processMarkup: processMarkup,
     processElement: processOneElement,
     process: function(markupOrNode) {
@@ -496,9 +614,7 @@ var furl = (function() {
       });
       return prom;
     },
-    getDataItem: function(collection, item) {
-      return data.getValue(collection, item);
-    }
+    data: data
   };
 
   return furl;
