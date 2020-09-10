@@ -146,6 +146,7 @@
       binding.tBody.innerHTML = '';
 
       function recurse(i) {
+//console.log(i);
         if(i == 0) {
           return;
         }
@@ -153,16 +154,22 @@
 
         binding.tBody.appendChild(newRow);
         processOneElement(newRow, binding, namespace.new()).then(function(b) {
-          binding.model.push(b);
-          b.setValue(v[v.length - i]);
-          if ('delete' in binding.attributes) {
-            binding.appendDeleteButton(b);
+//console.log(b);
+          if (b != null) {
+//console.log(b);
+            binding.model.push(b);
+            b.setValue(v[v.length - i]);
+            if ('delete' in binding.attributes) {
+              binding.appendDeleteButton(b);
+            }
           }
           recurse(i - 1);
         });
       };
 
-      recurse(v.length);
+      if (Array.isArray(v)) {
+        recurse(v.length);
+      }
     };
     binding.getValue = function() {
       var result = [];
@@ -205,9 +212,11 @@
 
         binding.tBody.appendChild(newRow);
         processOneElement(newRow, binding, namespace.new()).then(function(b) {
-          binding.model.push(b);
-          if ('delete' in binding.attributes) {
-            binding.appendDeleteButton(b);
+          if (b != null) {
+            binding.model.push(b);
+            if ('delete' in binding.attributes) {
+              binding.appendDeleteButton(b);
+            }
           }
         });
       });
@@ -217,7 +226,30 @@
 
 <class name="router" export>
   <class name="page">
-    <content />
+    <script>
+      if ('src' in binding.attributes) {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+          if (xhttp.readyState == 4) {
+            if (xhttp.status == 200) {
+              binding.element.innerHTML = xhttp.responseText;
+
+              // Remote resources should be evaluated in their own namespaces
+              var pageNamespace = root.new();
+              processChildElements(binding.element, binding, pageNamespace)
+                .then(function(b) {
+//console.log('Processing done');
+              });
+            } else {
+              console.log('Error retrieving remote page: '
+                + xhttp.status.toString());
+            }
+          }
+        };
+        xhttp.open('GET', binding.attributes.src, true);
+        xhttp.send();
+      }
+    </script>
   </class>
   <script>
     // Process the content and copy the content binding model to the model

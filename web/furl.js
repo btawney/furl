@@ -1,6 +1,29 @@
 // furl.js
 
 var furl = (function() {
+  var promise = function() {
+    var p = {
+      fulfilled: null,
+      fulfill: function(p1, p2, p3, p4, p5) {
+        if (p.nextCall != null) {
+          p.nextCall(p1, p2, p3, p4, p5);
+        } else {
+          p.fulfilled = [p1, p2, p3, p4, p5];
+        }
+      },
+      nextCall: null,
+      then: function(f) {
+        if (p.fulfilled != null) {
+          f(p.fulfilled[0], p.fulfilled[1], p.fulfilled[2], p.fulfilled[3],
+            p.fulfilled[4]);
+        } else {
+          p.nextCall = f;
+        }
+      }
+    };
+    return p;
+  };
+
   var data = {
     sessionId: 'dummy',
     collections: {},
@@ -100,7 +123,7 @@ var furl = (function() {
           var messageCollection = {};
           message.updates[c] = messageCollection;
           for (var i in queueCollection) {
-            messageCollection[i] = JSON.stringify(queueCollection[i]);
+            messageCollection[i] = queueCollection[i];
           }
         }
       }
@@ -112,7 +135,7 @@ var furl = (function() {
           var messageCollection = {};
           message.deletes[c] = messageCollection;
           for (var i in queueCollection) {
-            messageCollection[i] = JSON.stringify(queueCollection[i]);
+            messageCollection[i] = queueCollection[i];
           }
         }
       }
@@ -138,6 +161,38 @@ var furl = (function() {
       xhttp.open('PUT', 'update.php', true);
 //console.log(JSON.stringify(message));
       xhttp.send(JSON.stringify(message));
+    },
+
+    login: function(app, user, password) {
+      var prom = promise();
+
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (xhttp.readyState == 4) {
+          if (xhttp.status == 200) {
+            try {
+              var response = JSON.parse(xhttp.responseText);
+
+              if ('result' in response && response.result == 'success') {
+                data.collections = response.collections;
+                data.sessionId = response.sessionId;
+                prom.fulfill(true, response.sessionId);
+              } else {
+                prom.fulfill(false, response);
+              }
+            } catch (e) {
+              prom.fulfill(false, e);
+            }
+          } else {
+            prom.fulfill(false, xhttp.status);
+          }
+        }
+      };
+
+      xhttp.open('PUT', 'login.php', true);
+      xhttp.send(JSON.stringify({app: app, user: user, password: password}));
+
+      return prom;
     }
   };
 
@@ -310,29 +365,6 @@ var furl = (function() {
       }
     };
     return binding;
-  };
-
-  var promise = function() {
-    var p = {
-      fulfilled: null,
-      fulfill: function(p1, p2, p3, p4, p5) {
-        if (p.nextCall != null) {
-          p.nextCall(p1, p2, p3, p4, p5);
-        } else {
-          p.fulfilled = [p1, p2, p3, p4, p5];
-        }
-      },
-      nextCall: null,
-      then: function(f) {
-        if (p.fulfilled != null) {
-          f(p.fulfilled[0], p.fulfilled[1], p.fulfilled[2], p.fulfilled[3],
-            p.fulfilled[4]);
-        } else {
-          p.nextCall = f;
-        }
-      }
-    };
-    return p;
   };
 
   var processOneElement = function(element, docBinding, ns) {
@@ -613,6 +645,33 @@ var furl = (function() {
         prom.fulfill(binding);
       });
       return prom;
+    },
+    login: data.login,
+    loadPage: function(url, target) {
+      var prom = promise();
+      var binding = newDocBinding();
+
+      var targetToUse = (target == null ? document.body : target);
+
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+        if (xhttp.readyState == 4) {
+          if (xhttp.status == 200) {
+            processMarkup(xhttp.responseText, binding, root.new())
+              .then(function(b) {
+                binding.postInterpret();
+                targetToUse.innerHTML = '';
+                targetToUse.appendChild(binding.element);
+                prom.fulfill(binding);
+              });
+          } else {
+            target.innerHTML = 'Error: ' + xhttp.status.toString;
+          }
+        }
+      };
+
+      xhttp.open('GET', url, true);
+      xhttp.send(); 
     },
     data: data
   };

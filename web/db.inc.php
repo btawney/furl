@@ -33,7 +33,7 @@
     }
 
     function newId() {
-      return str_replace('/', '_', base64_encode(random_bytes(6)));
+      return str_replace('/', '_', base64_encode(random_bytes(15)));
     }
 
     function exec($sql) {
@@ -64,6 +64,7 @@
     }
 
     function queryEnumeratedArray($sql) {
+//print "$sql\n";
       $result = array();
       if ($qr = $this->connection->query($sql)) {
         while ($row = $qr->fetch_row()) {
@@ -75,6 +76,7 @@
     }
 
     function queryAssociativeArray($sql) {
+//print "$sql\n";
       $result = array();
       if ($qr = $this->connection->query($sql)) {
         while ($row = $qr->fetch_row()) {
@@ -152,6 +154,83 @@
       $this->set($name, 'b', $value);
     }
 
+    function getSessionId($app, $user, $password) {
+      $this->setString('app', $app);
+      $this->setString('user', $user);
+      $this->setString('password', $password);
+
+      $userId = $this->queryScalar('SELECT @userId := user.id'
+        . ' FROM app'
+        . ' JOIN user ON user.appId = app.id'
+        . ' WHERE app.name = @app'
+        . ' AND user.name = @user'
+        . ' AND user.password = PASSWORD(@password)');
+
+      if ($userId === false) {
+        return false;
+      }
+
+      while (true) {
+        $newId = $this->newId();
+        $this->setString('sessionId', $newId);
+        $c = $this->queryScalar('SELECT COUNT(*) FROM session'
+          . ' WHERE id = @sessionId');
+        if ($c == 0) {
+          $this->exec('INSERT INTO session'
+            . ' (id, userId)'
+            . ' VALUES'
+            . ' (@sessionId, @userId)');
+          $this->sessionId = $newId;
+          return $newId;
+        }
+      }
+    }
+
+    function canInsert($collection) {
+      $this->setString('name', $collection);
+
+      $c = $this->queryScalar('SELECT COUNT(*)'
+        . ' FROM session s'
+        . ' JOIN userRole ur ON ur.userId = s.userId'
+        . ' JOIN collectionRole cr ON cr.roleId = ur.roleId'
+        . ' JOIN collection c ON c.id = cr.collectionId'
+        . ' WHERE s.id = @sessionId'
+        . ' AND c.name = @name'
+        . ' AND cr.canUpdate');
+
+      return ($c > 0);
+    }
+
+    function canUpdate($collection) {
+      $this->setString('name', $collection);
+
+      $c = $this->queryScalar('SELECT COUNT(*)'
+        . ' FROM session s'
+        . ' JOIN userRole ur ON ur.userId = s.userId'
+        . ' JOIN collectionRole cr ON cr.roleId = ur.roleId'
+        . ' JOIN collection c ON c.id = cr.collectionId'
+        . ' WHERE s.id = @sessionId'
+        . ' AND c.name = @name'
+        . ' AND cr.canUpdate');
+
+      return ($c > 0);
+    }
+
+    function canDelete($collection) {
+      $this->setString('name', $collection);
+
+      $c = $this->queryScalar('SELECT COUNT(*)'
+        . ' FROM session s'
+        . ' JOIN userRole ur ON ur.userId = s.userId'
+        . ' JOIN collectionRole cr ON cr.roleId = ur.roleId'
+        . ' JOIN collection c ON c.id = cr.collectionId'
+        . ' WHERE s.id = @sessionId'
+        . ' AND c.name = @name'
+        . ' AND cr.canDelete');
+
+      return ($c > 0);
+    }
+
     function getCollectionId($name) {
       $this->setString('name', $name);
       $collectionId = $this->queryScalar('SELECT c.id'
@@ -185,9 +264,31 @@
             . ' JOIN user u ON u.id = s.userId'
             . ' WHERE s.id = @sessionId');
         } else {
-print "User cannot create collection: '$name'\n";
+//print "User cannot create collection: '$name'\n";
         }
       }
+    }
+
+    function getCollections() {
+      return $this->queryAssociativeArray('SELECT c.name, c.id'
+        . ' FROM session s'
+        . ' JOIN user u ON u.id = s.userId'
+        . ' JOIN collection c ON c.appId = u.appId'
+        . ' WHERE s.id = @sessionId'
+        . ' AND EXISTS(SELECT *'
+        .   ' FROM userRole ur'
+        .   ' JOIN collectionRole cr ON cr.roleId = ur.roleId'
+        .   ' WHERE ur.userId = u.id'
+        .   ' AND cr.collectionId = c.id'
+        .   ' AND cr.canSelect = TRUE)');
+    }
+
+    function getItems($collectionId) {
+      $this->setInteger('collectionId', $collectionId);
+
+      return $this->queryAssociativeArray('SELECT i.id, i.content'
+        . ' FROM item i'
+        . ' WHERE collectionId = @collectionId');
     }
 
     function updateItem($collectionId, $itemId, $content) {
