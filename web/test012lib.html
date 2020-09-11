@@ -1,0 +1,24 @@
+<using src="common.html">
+  <class name="selectPartOfSpeech" export>
+    <select>
+      <option value="n">Noun</option>
+      <option value="v">Verb</option>
+      <option value="adj">Adjective</option>
+      <option value="adv">Adverb</option>
+      <option value="part">Particle</option>
+    </select>
+  </class>
+
+  <class name="imeInput" export>
+    <input></input>
+    <script>
+      console.log(binding.element);
+    </script>
+  </class>
+
+  <class name="lemmas" export>
+    <list add delete>
+      <imeInput>
+    </list>
+  </class>
+</using>

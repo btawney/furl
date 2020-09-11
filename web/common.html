@@ -1,26 +1,3 @@
-<class name="input" native export>
-  <script>
-    //binding.element = document.createElement('INPUT');
-    binding.setValue = function(v) {
-      binding.element.value = v.toString();
-    };
-    binding.getValue = function() {
-      return binding.element.value;
-    };
-    binding.element.addEventListener('focus', function(evt) {
-      binding.valueOnFocus = binding.element.value;
-    });
-    binding.element.addEventListener('blur', function(evt) {
-      if (binding.element.value != binding.valueOnFocus) {
-        binding.notifyChange();
-      }
-    });
-    binding.focus = function() {
-      binding.element.focus();
-    };
-  </script>
-</class>
-
 <class name="literal" export>
   <script>
     binding.original = '';
@@ -49,17 +26,20 @@
       var button = document.createElement('BUTTON');
       button.innerText = '+';
       button.addEventListener('click', function(evt) {
-        contentTemplate(null, null, null)
-          .then(function(elementBinding) {
-            binding.model.push(elementBinding);
-            binding.listPart.appendChild(elementBinding.element);
+        var contentTag = document.createElement('CONTENT');
+        binding.listPart.appendChild(contentTag);
+
+        contentTemplate(contentTag, namespace)
+          .then(function(elementBindings, scripts) {
+            binding.addToModel(elementBindings);
+            binding.runScripts(scripts);
 
             if ('delete' in binding.attributes) {
-              binding.appendDeleteButton(elementBinding);
+              binding.appendDeleteButton(elementBindings[0]);
             }
 
             binding.notifyChange();
-            elementBinding.focus();
+            elementBindings[0].focus();
           });
       });
       binding.addPart.appendChild(button);
@@ -67,19 +47,20 @@
       binding.listPart = binding.element;
     }
 
-    binding.model = [];
     binding.getValue = function() {
       var result = [];
-      for (var i = 0; i < binding.model.length; ++i) {
-        result.push(binding.model[i].getValue());
+      for (var i = 0; i < binding.unnamed.length; ++i) {
+        result.push(binding.unnamed[i].getValue());
       }
       return result;
     };
+
     binding.setValue = function(v) {
-      binding.model = [];
+      binding.unnamed = [];
       binding.listPart.innerHTML = '';
 
       var contentTemplate = namespace.get('CONTENT');
+
       if (contentTemplate != null) {
         for (var i = 0; i < v.length; ++i) {
           if (('delimiter' in binding.attributes) && (i > 0)) {
@@ -88,27 +69,32 @@
             binding.listPart.appendChild(span);
           }
 
-          contentTemplate(null, null, null)
-            .then(function(elementBinding) {
-              binding.model.push(elementBinding);
-              binding.listPart.appendChild(elementBinding.element);
-              elementBinding.setValue(v[i]);
+          var contentTag = document.createElement('CONTENT');
+          binding.listPart.appendChild(contentTag);
+
+          contentTemplate(contentTag, namespace)
+            .then(function(elementBindings, scripts) {
+              binding.addToModel(elementBindings);
+              binding.runScripts(scripts);
 
               if ('delete' in binding.attributes) {
-                binding.appendDeleteButton(elementBinding);
+                binding.appendDeleteButton(elementBindings[0]);
               }
+
+              elementBindings[0].setValue(v[i]);
             });
         }
       } else {
         binding.element.innerText = 'CONTENT is not defined';
       }
     };
+
     binding.appendDeleteButton = function(elementBinding) {
       var button = document.createElement('BUTTON');
       button.innerText = 'X';
       button.addEventListener('click', function(evt) {
-        var modelIndex = binding.model.indexOf(elementBinding);
-        binding.model.splice(modelIndex, 1);
+        var modelIndex = binding.unnamed.indexOf(elementBinding);
+        binding.unnamed.splice(modelIndex, 1);
         binding.listPart.removeChild(elementBinding.element);
         binding.listPart.removeChild(button);
         binding.notifyChange();
@@ -141,7 +127,6 @@
       return;
     }
 
-    binding.model = [];
     binding.setValue = function(v) {
       binding.tBody.innerHTML = '';
 
@@ -150,21 +135,22 @@
         if(i == 0) {
           return;
         }
-        var newRow = binding.rowTemplate.cloneNode(true);
 
+        var newRow = binding.rowTemplate.cloneNode(true);
+        var rowBinding = newBinding(newRow);
         binding.tBody.appendChild(newRow);
-        processOneElement(newRow, binding, namespace.new()).then(function(b) {
+
+        processChildElements(newRow, namespace.new('TABLEITEM'))
+          .then(function(bindings, scripts) {
 //console.log(b);
-          if (b != null) {
 //console.log(b);
-            binding.model.push(b);
-            b.setValue(v[v.length - i]);
+            rowBinding.addToModel(bindings);
+            rowBinding.setValue(v[v.length - i]);
             if ('delete' in binding.attributes) {
-              binding.appendDeleteButton(b);
+              binding.appendDeleteButton(rowBinding);
             }
-          }
-          recurse(i - 1);
-        });
+            recurse(i - 1);
+          });
       };
 
       if (Array.isArray(v)) {
@@ -173,8 +159,8 @@
     };
     binding.getValue = function() {
       var result = [];
-      for (var i = 0; i < binding.model.length; ++i) {
-        result.push(binding.model[i].getValue());
+      for (var i = 0; i < binding.unnamed.length; ++i) {
+        result.push(binding.unnamed[i].getValue());
       }
       return result;
     };
@@ -183,8 +169,8 @@
       var button = document.createElement('BUTTON');
       button.innerText = 'X';
       button.addEventListener('click', function(evt) {
-        var modelIndex = binding.model.indexOf(rowBinding);
-        binding.model.splice(modelIndex, 1);
+        var modelIndex = binding.unnamed.indexOf(rowBinding);
+        binding.unnamed.splice(modelIndex, 1);
         binding.tBody.removeChild(rowBinding.element);
         binding.notifyChange();
       });
@@ -209,16 +195,18 @@
       cell.appendChild(button);
       cell.addEventListener('click', function(evt) {
         var newRow = binding.rowTemplate.cloneNode(true);
-
+        var rowBinding = newBinding(newRow);
         binding.tBody.appendChild(newRow);
-        processOneElement(newRow, binding, namespace.new()).then(function(b) {
-          if (b != null) {
-            binding.model.push(b);
+
+        processChildElements(newRow, namespace.new('TABLEITEM'))
+          .then(function(bindings, scripts) {
+//console.log(b);
+//console.log(b);
+            rowBinding.addToModel(bindings);
             if ('delete' in binding.attributes) {
-              binding.appendDeleteButton(b);
+              binding.appendDeleteButton(rowBinding);
             }
-          }
-        });
+          });
       });
     }
   </script>
@@ -235,7 +223,7 @@
               binding.element.innerHTML = xhttp.responseText;
 
               // Remote resources should be evaluated in their own namespaces
-              var pageNamespace = root.new();
+              var pageNamespace = root.newChildNamespace('ROUTERPAGE');
               processChildElements(binding.element, binding, pageNamespace)
                 .then(function(b) {
 //console.log('Processing done');
@@ -246,7 +234,7 @@
             }
           }
         };
-        xhttp.open('GET', binding.attributes.src, true);
+        xhttp.open('GET', binding.attributes.src + '?' + data.sessionId, true);
         xhttp.send();
       }
     </script>
@@ -256,8 +244,10 @@
     // for the tag itself
     var contentInterpreter = namespace.get('CONTENT');
     if (contentInterpreter != null) {
-      contentInterpreter(null, null, null).then(function(b) {
-        binding.model = b.model;
+      contentInterpreter(null, namespace).then(function(bs, ss) {
+        binding.addToModel(bs);
+        binding.runScripts(ss);
+        binding.setValueFromDataSource();
       });
     }
 
@@ -265,10 +255,36 @@
     binding.setValue = function(pageName) {
       binding.element.innerHTML = '';
 
+//console.log('Lookin for page ' + pageName);
       if (pageName in binding.model) {
+//console.log('Found page name');
         binding.element.appendChild(binding.model[pageName].element);
       } else if ('default' in binding.model) {
+//console.log('Found default page 1');
         binding.element.appendChild(binding.model.default.element);
+      } else {
+        var defaultPage = null;
+        for (var name in binding.model) {
+          if ('default' in binding.model[name].attributes) {
+            defaultPage = binding.model[name].element;
+            break;
+          }
+        }
+
+        if (defaultPage == null) {
+          for (var i = 0; i < binding.unnamed.length; ++i) {
+            if ('default' in binding.unnamed[i].attributes) {
+              defaultPage = binding.unnamed[i].element;
+              break;
+            }
+          }
+        }
+
+        if (defaultPage != null) {
+//console.log('Found default page 2');
+//console.log(binding);
+          binding.element.appendChild(defaultPage);
+        }
       }
     }
 

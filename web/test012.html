@@ -1,0 +1,46 @@
+<html>
+  <head>
+    <script src="furl.js"></script>
+    <script>
+      var binding = null;
+
+      function onLoad() {
+        furl.process(document.body).then(function(b) {
+          binding = b;
+        });
+      }
+
+      function login() {
+        var credentials = binding.getValue();
+
+        furl.login('test012app', credentials.user, credentials.password).then(
+          function(success, detail) {
+            if (success) {
+              furl.loadPage('test012a.html');
+            } else {
+              console.log(detail);
+            }
+          });
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+    <using src="common.html">
+      <table>
+        <tr>
+          <td>User: </td>
+          <td><input name="user" /></td>
+        </tr>
+        <tr>
+          <td>Password: </td>
+          <td><input name="password" type="password" /></td>
+        </tr>
+        <tr>
+          <td colspan="2" align="center">
+            <button onclick="login()">Login</button>
+          </td>
+        </tr>
+      </table>
+    </body>
+  </using>
+</html>
