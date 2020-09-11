@@ -200,6 +200,7 @@ var furl = (function() {
 
   var namespace = function(par) {
     var ns = {
+      name: 'root',
       parent: par,
       vars: {},
       set: function(name, value) {
@@ -216,8 +217,10 @@ var furl = (function() {
           return dflt;
         }
       },
-      new: function() {
-        return namespace(ns);
+      newChildNamespace: function(name) {
+        var newChild = namespace(ns);
+        newChild.name = name;
+        return newChild;
       },
       export: function(name, value) {
         if ('exported' in ns) {
@@ -385,6 +388,9 @@ var furl = (function() {
         var bindsToExistingElement = false;
 
         if (binding != null) {
+//console.log('binding for element');
+//console.log(element);
+//console.log(binding);
           if (binding.element == element) {
             bindsToExistingElement = true;
           } else if (binding.element != null) {
@@ -401,6 +407,10 @@ var furl = (function() {
             docBinding.unnamed.push(binding);
           }
         }
+//else {
+//console.log('No binding for element');
+//console.log(element);
+//}
 
         if (!bindsToExistingElement) {
           container.removeChild(element);
@@ -409,6 +419,10 @@ var furl = (function() {
         prom.fulfill(binding);
       });
     } else {
+console.log('No interpreter for ' + element.tagName);
+if (element.tagName == 'IMEINPUT') {
+console.log(ns);
+}
       if ('name' in element.attributes) {
 //console.log('252: Tag not found in namespace: ' + element.tagName);
 //console.log(ns);
@@ -447,11 +461,15 @@ var furl = (function() {
 
     var recurseAcrossSiblings = function(element) {
       if (element == null) {
+//console.log('Processing done, fulfilling promise');
         interpreterPromise.fulfill();
       } else {
+//console.log('Processing element');
+//console.log(element);
         var nextSibling = element.nextElementSibling;
 
         processOneElement(element, docBinding, ns).then(function() {
+//console.log('Ready to process next sibling');
           recurseAcrossSiblings(nextSibling);
         });
       }
@@ -463,14 +481,15 @@ var furl = (function() {
   };
 
   var processMarkup = function(markup, docBinding, ns) {
+//console.log(markup);
     var container = document.createElement('SPAN');
     container.innerHTML = markup;
     return processChildElements(container, docBinding, ns);
   };
 
   var root = namespace();
-  root.newLibraryNamespace = function() {
-    var ns = root.new();
+  root.newLibraryNamespace = function(name) {
+    var ns = root.newChildNamespace(name);
     ns.exported = {};
     return ns;
   };
@@ -488,7 +507,7 @@ var furl = (function() {
 
     var interpreter = function(element, docBinding, includingNamespace) {
       var instancePromise = promise();
-      var instanceNamespace = definingNamespace.new();
+      var instanceNamespace = definingNamespace.newChildNamespace(element.tagName);
 
       // The instance of the class is a child of the including document
       var instanceBinding = docBinding.new();
@@ -504,7 +523,7 @@ var furl = (function() {
           contentBinding.copyAttributesFromElement(e);
         }
 
-        var contentNamespace = includingNamespace.new();
+        var contentNamespace = includingNamespace.newChildNamespace('CONTENT');
 
         // Any classes defined in the instance namespace will be available
         // to the content namespace
@@ -512,8 +531,11 @@ var furl = (function() {
           contentNamespace[name] = instanceNamespace[name];
         }
 
+console.log('Processing markup: ' + element.innerHTML);
         processMarkup(element.innerHTML, contentBinding, contentNamespace).then(
           function(b) {
+console.log('Got a binding');
+console.log(contentBinding);
             contentBinding.postInterpret();
             contentPromise.fulfill(contentBinding);
           });
@@ -561,7 +583,7 @@ var furl = (function() {
 
     if (!('src' in element.attributes)) {
       console.log('Error: USING requires a SRC attribute');
-      return null;
+      return prom;
     }
 //console.log('399: USING ' + element.attributes.src.value);
 
@@ -571,11 +593,11 @@ var furl = (function() {
         if (xhttp.status == 200) {
           // Library bindings don't need parents
           var libraryBinding = newDocBinding();
-          var libraryNamespace = root.newLibraryNamespace();
+          var libraryNamespace = root.newLibraryNamespace(element.attributes.src.value);
           processMarkup(xhttp.responseText, libraryBinding, libraryNamespace)
             .then(function(b) {
               // Import everything from the library into this namespace
-              var contentNamespace = declaringNamespace.new();
+              var contentNamespace = declaringNamespace.newChildNamespace('CONTENT');
               for (var name in libraryNamespace.exported) {
                 contentNamespace.set(name, libraryNamespace.exported[name]);
               }
@@ -609,7 +631,7 @@ var furl = (function() {
         }
       }
     };
-    xhttp.open('GET', element.attributes.src.value, true);
+    xhttp.open('GET', element.attributes.src.value + '?' + data.sessionId, true);
     xhttp.send();
 
     return prom;
@@ -636,9 +658,9 @@ var furl = (function() {
       var binding = newDocBinding();
 
       if (typeof(markupOrNode) == 'string') {
-        var p = processMarkup(markupOrNode, binding, root.new());
+        var p = processMarkup(markupOrNode, binding, root.newChildNamespace('TOP'));
       } else {
-        var p = processOneElement(markupOrNode, binding, root.new());
+        var p = processOneElement(markupOrNode, binding, root.newChildNamespace('TOP'));
       }
       p.then(function(b) {
         binding.postInterpret();
@@ -657,7 +679,7 @@ var furl = (function() {
       xhttp.onreadystatechange = function() {
         if (xhttp.readyState == 4) {
           if (xhttp.status == 200) {
-            processMarkup(xhttp.responseText, binding, root.new())
+            processMarkup(xhttp.responseText, binding, root.newChildNamespace('PAGE'))
               .then(function(b) {
                 binding.postInterpret();
                 targetToUse.innerHTML = '';
@@ -670,7 +692,7 @@ var furl = (function() {
         }
       };
 
-      xhttp.open('GET', url, true);
+      xhttp.open('GET', url + '?' + data.sessionId, true);
       xhttp.send(); 
     },
     data: data
