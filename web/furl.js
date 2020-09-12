@@ -46,6 +46,7 @@ var furl = (function() {
       return null;
     },
     setValue: function(collection, item, value) {
+//console.log([collection, item, value]);
       if (collection in data.collections) {
         var c = data.collections[collection];
       } else {
@@ -349,6 +350,9 @@ var furl = (function() {
         binding.changeListeners.push(f);
       },
       notifyChange: function() {
+//console.log('Received notification of change at ' + binding.debugPath());
+//console.log('    Passing on to ' + binding.changeListeners.length.toString()
+//+ ' listeners');
         for (var i = 0; i < binding.changeListeners.length; ++i) {
           var f = binding.changeListeners[i];
           try {
@@ -379,6 +383,7 @@ var furl = (function() {
               fn(binding, namespace);
             } catch (e2) {
               console.log('Error evaluating script: ' + e2.toString());
+//console.log(scripts[i]);
             }
           } catch (e1) {
             console.log('Syntax error in script: ' + e1.toString());
@@ -430,7 +435,7 @@ var furl = (function() {
     return binding;
   };
 
-  var genericInterpreter = function(element, ns) {
+  var interpretTag = function(element, ns, parentSourceContext) {
     var prom = promise();
 
     if ('ftype' in element.attributes) {
@@ -440,12 +445,14 @@ var furl = (function() {
       var fullTagName = element.tagName;
     }
 
-//console.log([fullTagName, ns]);
+    var sourceContext = parentSourceContext + '.' + fullTagName;
+
+//console.log(sourceContext);
 
     var interpreter = ns.get(fullTagName);
     if (interpreter != null) {
 //console.log('222: Tag found for: ' + fullTagName);
-      interpreter(element, ns).then(function(bindings, scripts) {
+      interpreter(element, ns, sourceContext).then(function(bindings, scripts) {
 //console.log('    Promise fulfilled');
 //console.log([bindings, scripts]);
         var container = element.parentElement;
@@ -504,7 +511,8 @@ var furl = (function() {
           binding.element.focus();
         };
 
-        interpretChildElements(element, ns).then(function(bindings, scripts) {
+        interpretChildElements(element, ns, sourceContext)
+          .then(function(bindings, scripts) {
           binding.addToModel(bindings);
           binding.runScripts(scripts, ns);
           binding.setValueFromDataSource();
@@ -513,14 +521,16 @@ var furl = (function() {
       } else if ('name' in element.attributes) {
         var binding = newBinding(element);
 
-        interpretChildElements(element, ns).then(function(bindings, scripts) {
+        interpretChildElements(element, ns, sourceContext)
+          .then(function(bindings, scripts) {
           binding.addToModel(bindings);
           binding.runScripts(scripts, ns);
           binding.setValueFromDataSource();
           prom.fulfill([binding], []);
         });
       } else {
-        interpretChildElements(element, ns).then(function(bindings, scripts) {
+        interpretChildElements(element, ns, sourceContext)
+          .then(function(bindings, scripts) {
           prom.fulfill(bindings, scripts);
         });
       }
@@ -529,7 +539,7 @@ var furl = (function() {
     return prom;
   };
 
-  var interpretChildElements = function(container, ns) {
+  var interpretChildElements = function(container, ns, parentSourceContext) {
     var interpreterPromise = promise();
     var childBindings = [];
     var childScripts = [];
@@ -539,11 +549,14 @@ var furl = (function() {
 //console.log('Processing done, fulfilling promise to interpret child elements of ' + container.tagName);
         interpreterPromise.fulfill(childBindings, childScripts);
       } else {
-//console.log('Processing element');
+//console.log('Processing element ' + 
+//((element.parentElement == null) ? '' : element.parentElement.tagName + '.')
+//+ element.tagName);
 //console.log(element);
         var nextSibling = element.nextElementSibling;
 
-        genericInterpreter(element, ns).then(function(bindings, scripts) {
+        interpretTag(element, ns, parentSourceContext)
+          .then(function(bindings, scripts) {
           for (var i = 0; i < bindings.length; ++i) {
             childBindings.push(bindings[i]);
           }
@@ -577,7 +590,7 @@ var furl = (function() {
     return ns;
   };
 
-  root.set('CLASS', function(template, definingNamespace) {
+  root.set('CLASS', function(template, definingNamespace, parentSourceContext) {
     var classPromise = promise();
 
     if (!('name' in template.attributes)) {
@@ -586,26 +599,40 @@ var furl = (function() {
       return classPromise;
     }
 
+    var classSourceContext = parentSourceContext + '.CLASS('
+      + template.attributes.name.value + ')';
+
 //console.log('321: CLASS ' + template.attributes.name.value);
 
-    var interpreter = function(element, includingNamespace) {
+    var interpreter = function(element, includingNamespace, parentSourceContext) {
 //console.log('Calling class interpreter');
       var instancePromise = promise();
-      var instanceNamespace = definingNamespace.newChildNamespace(element.tagName);
+      var instanceNamespace = definingNamespace.newChildNamespace('INST');
+
+      var instanceSourceContext = '('
+        + parentSourceContext + '.' + element.tagName
+        + (('name' in element.attributes) ? '(' + element.attributes.name.value
+          + ')' : '')
+        + '<' + classSourceContext + ')';
 
       // Define the <CONTENT> tag so it can be referenced within the class
       // 
-      instanceNamespace.set('CONTENT', function(e, n) {
+      instanceNamespace.set('CONTENT', function(e, n, psc) {
         var contentBinding = newBinding(document.createElement('SPAN'));
         var contentPromise = promise();
         // Evaluate content in a combination of the defining namespace and
         // the declaring namespace
-        var contentNamespace = definingNamespace.newChildNamespace('CONTENT',
-          [n]);
+        var contentNamespace = instanceNamespace.newChildNamespace(
+          'CONTENT.instance+context=content',
+          [n, includingNamespace]);
+
+        var contentSourceContext = '('
+          + psc + '.CONTENT' + '<' + instanceSourceContext + ')';
 
         contentBinding.element.innerHTML = element.innerHTML + e.innerHTML;
 
-        interpretChildElements(contentBinding.element, contentNamespace).then(
+        interpretChildElements(contentBinding.element, contentNamespace,
+          contentSourceContext).then(
           function(bindings, scripts) {
             contentBinding.addToModel(bindings);
             contentBinding.runScripts(scripts, contentNamespace);
@@ -625,16 +652,31 @@ var furl = (function() {
 
       // The instance of the class is a child of the including document
       var instanceBinding = newBinding(element);
-bdct for tables, how do we process the body of the class tag and have it
-operate on the table that forms the template of the class?
-      if (!('native' in template.attributes)) {
+
+      var otherScripts = [];
+      if ('native' in template.attributes) {
+        // Native classes are standard HTML tags that we create a binding for
+        // For that reason, the only thing that might be in the body
+        // of a native class would be some Javascript, which we need to
+        // execute.
+        var childElement = template.firstElementChild;
+        while (childElement != null) {
+          if (childElement.tagName == 'SCRIPT') {
+            otherScripts.push(childElement.innerText);
+          }
+
+          childElement = childElement.nextElementSibling;
+        }
+      } else {
         instanceBinding.element = document.createElement('SPAN');
         instanceBinding.element.innerHTML = template.innerHTML;
       }
 
-      interpretChildElements(instanceBinding.element, instanceNamespace).then(
+      interpretChildElements(instanceBinding.element, instanceNamespace,
+        instanceSourceContext).then(
         function(bindings, scripts) {
           instanceBinding.addToModel(bindings);
+          instanceBinding.runScripts(otherScripts, instanceNamespace);
           instanceBinding.runScripts(scripts, instanceNamespace);
           instanceBinding.setValueFromDataSource();
 //console.log('Fulfilling class instance promise');
@@ -663,7 +705,7 @@ operate on the table that forms the template of the class?
     return classPromise;
   });
 
-  root.set('USING', function(element, declaringNamespace) {
+  root.set('USING', function(element, declaringNamespace, parentSourceContext) {
     var prom = promise();
 
     if (!('src' in element.attributes)) {
@@ -672,6 +714,8 @@ operate on the table that forms the template of the class?
       return prom;
     }
 //console.log('399: USING ' + element.attributes.src.value);
+    var sourceContext = parentSourceContext
+      + '(' + element.attributes.src.value + ')';
 
     var xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
@@ -680,8 +724,9 @@ operate on the table that forms the template of the class?
           // Library bindings don't need parents
           var libraryBinding = newBinding(document.createElement('SPAN'));
           libraryBinding.element.innerHTML = xhttp.responseText;
-          var libraryNamespace = root.newLibraryNamespace(element.attributes.src.value);
-          genericInterpreter(libraryBinding.element, libraryNamespace)
+          var libraryNamespace = root.newLibraryNamespace(
+            element.attributes.src.value);
+          interpretTag(libraryBinding.element, libraryNamespace, sourceContext)
             .then(function(bindings) {
               // Import everything from the library into this namespace
               var contentNamespace = declaringNamespace.newChildNamespace('USING');
@@ -693,7 +738,10 @@ operate on the table that forms the template of the class?
               usingBinding.element = document.createElement('SPAN');
               usingBinding.element.innerHTML = element.innerHTML;
 
-              interpretChildElements(usingBinding.element, contentNamespace)
+//console.log('About to process children of ' + sourceContext);
+//console.log(element.outerHTML);
+              interpretChildElements(usingBinding.element, contentNamespace,
+                sourceContext)
                 .then(function(bindings, scripts) {
                 if (element.parentElement != null) {
                   var par = element.parentElement;
@@ -720,7 +768,8 @@ operate on the table that forms the template of the class?
 
     return prom;
   });
-  root.set('SCRIPT', function(element, namespace) {
+  root.set('SCRIPT', function(element, namespace, parentSourceContext) {
+    var sourceContext = parentSourceContext + '.class';
     var prom = promise();
     prom.fulfill([], [element.innerText]);
     return prom;
@@ -732,7 +781,7 @@ operate on the table that forms the template of the class?
       var binding = newBinding(element);
       var ns = root.newChildNamespace('TOP');
 
-      var p = interpretChildElements(element, ns);
+      var p = interpretChildElements(element, ns, 'TOP');
 
       p.then(function(bs, scripts) {
         binding.addToModel(bs);
@@ -745,7 +794,7 @@ operate on the table that forms the template of the class?
     login: data.login,
     loadPage: function(url, target) {
       var prom = promise();
-      var binding = newBinding();
+      var binding = newBinding(document.createElement('SPAN'));
       var ns = root.newChildNamespace('PAGE');
 
       var targetToUse = (target == null ? document.body : target);
@@ -754,7 +803,8 @@ operate on the table that forms the template of the class?
       xhttp.onreadystatechange = function() {
         if (xhttp.readyState == 4) {
           if (xhttp.status == 200) {
-            processMarkup(xhttp.responseText, ns)
+            binding.element.innerHTML = xhttp.responseText;
+            interpretChildElements(binding.element, ns, url)
               .then(function(bs, scripts) {
                 binding.addToModel(bs);
                 binding.runScripts(scripts, ns);

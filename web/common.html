@@ -129,6 +129,7 @@
 
     binding.setValue = function(v) {
       binding.tBody.innerHTML = '';
+      binding.unnamed = [];
 
       function recurse(i) {
 //console.log(i);
@@ -140,7 +141,7 @@
         var rowBinding = newBinding(newRow);
         binding.tBody.appendChild(newRow);
 
-        processChildElements(newRow, namespace.new('TABLEITEM'))
+        interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
           .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
@@ -149,6 +150,11 @@
             if ('delete' in binding.attributes) {
               binding.appendDeleteButton(rowBinding);
             }
+
+            binding.unnamed.push(rowBinding);
+            rowBinding.par = binding;
+            rowBinding.addChangeListener(binding.notifyChange);
+
             recurse(i - 1);
           });
       };
@@ -198,7 +204,7 @@
         var rowBinding = newBinding(newRow);
         binding.tBody.appendChild(newRow);
 
-        processChildElements(newRow, namespace.new('TABLEITEM'))
+        interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
           .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
@@ -206,7 +212,13 @@
             if ('delete' in binding.attributes) {
               binding.appendDeleteButton(rowBinding);
             }
+
+            binding.unnamed.push(rowBinding);
+            rowBinding.par = binding;
+            rowBinding.addChangeListener(binding.notifyChange);
           });
+
+        binding.notifyChange();
       });
     }
   </script>
@@ -214,6 +226,7 @@
 
 <class name="router" export>
   <class name="page">
+    <content></content>
     <script>
       if ('src' in binding.attributes) {
         var xhttp = new XMLHttpRequest();
@@ -224,8 +237,11 @@
 
               // Remote resources should be evaluated in their own namespaces
               var pageNamespace = root.newChildNamespace('ROUTERPAGE');
-              processChildElements(binding.element, binding, pageNamespace)
-                .then(function(b) {
+              interpretChildElements(binding.element, pageNamespace)
+                .then(function(bindings, scripts) {
+                binding.addToModel(bindings);
+                binding.runScripts(scripts);
+                binding.setValueFromDataSource();
 //console.log('Processing done');
               });
             } else {
@@ -240,12 +256,17 @@
     </script>
   </class>
   <script>
-    // Process the content and copy the content binding model to the model
-    // for the tag itself
+//console.log('Processing script for router');
     var contentInterpreter = namespace.get('CONTENT');
+    var contentTag = document.createElement('CONTENT');
+
     if (contentInterpreter != null) {
-      contentInterpreter(null, namespace).then(function(bs, ss) {
-        binding.addToModel(bs);
+//console.log('About to interpret content');
+      contentInterpreter(contentTag, namespace).then(function(bs, ss) {
+//console.log('Done interpreting content');
+//console.log(bs);
+        // Copy the content binding model to the model for the tag itself
+        binding.model = bs[0].model;
         binding.runScripts(ss);
         binding.setValueFromDataSource();
       });
@@ -255,7 +276,7 @@
     binding.setValue = function(pageName) {
       binding.element.innerHTML = '';
 
-//console.log('Lookin for page ' + pageName);
+//console.log('Looking for page ' + pageName);
       if (pageName in binding.model) {
 //console.log('Found page name');
         binding.element.appendChild(binding.model[pageName].element);
@@ -288,6 +309,7 @@
       }
     }
 
+//console.log('Adding event listener');
     window.addEventListener('popstate', function(evt) {
       binding.setValue(document.location.hash.substr(1));
     });
