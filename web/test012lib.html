@@ -21,4 +21,36 @@
       <imeInput>
     </list>
   </class>
+
+  <class name="lexicalentry" export>
+    <table>
+      <tr>
+        <td>Lemmas:</td>
+        <td><lemmas name="lemmas" /></td>
+      </tr>
+      <tr>
+        <td>Part of Speech:</td>
+        <td><selectPartOfSpeech name="partOfSpeech" /></td>
+      </tr>
+      <tr>
+        <td>Definitions</td>
+        <td>
+          <table ftype="dynamic" name="definitions" add delete>
+            <thead>
+              <tr>
+                <td><b><u>Definition</u></b></td>
+                <td><b><u>Source</u></b></td>
+              </tr>
+            </thead>
+            <tbody>
+            </tbody>
+              <tr>
+                <td><input name="definition" /></td>
+                <td><input name="source" /></td>
+              </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </class>
 </using>

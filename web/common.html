@@ -12,8 +12,18 @@
 </class>
 
 <class name="list" export>
+  <class name="index">
+    <script>
+      var index = namespace.get('LIST(INDEX)');
+      binding.element.innerText = index.toString();
+      namespace.setAtDefinition('LIST(INDEX)', index + 1);
+//console.log(namespace);
+    </script>
+  </class>
   <script>
     binding.listPart = document.createElement('SPAN');
+
+    namespace.set('LIST(INDEX)', 1);
 
     if ('add' in binding.attributes) {
       binding.listPart = document.createElement('SPAN');
@@ -21,15 +31,13 @@
       binding.element.appendChild(binding.listPart);
       binding.element.appendChild(binding.addPart);
 
-      var contentTemplate = namespace.get('CONTENT');
-
       var button = document.createElement('BUTTON');
       button.innerText = '+';
       button.addEventListener('click', function(evt) {
         var contentTag = document.createElement('CONTENT');
         binding.listPart.appendChild(contentTag);
 
-        contentTemplate(contentTag, namespace)
+        interpretTag(contentTag, namespace)
           .then(function(elementBindings, scripts) {
             binding.addToModel(elementBindings);
             binding.runScripts(scripts);
@@ -59,33 +67,49 @@
       binding.unnamed = [];
       binding.listPart.innerHTML = '';
 
-      var contentTemplate = namespace.get('CONTENT');
-
-      if (contentTemplate != null) {
-        for (var i = 0; i < v.length; ++i) {
-          if (('delimiter' in binding.attributes) && (i > 0)) {
-            var span = document.createElement('SPAN');
-            span.innerHTML = binding.attributes.delimiter;
-            binding.listPart.appendChild(span);
-          }
-
-          var contentTag = document.createElement('CONTENT');
-          binding.listPart.appendChild(contentTag);
-
-          contentTemplate(contentTag, namespace)
-            .then(function(elementBindings, scripts) {
-              binding.addToModel(elementBindings);
-              binding.runScripts(scripts);
-
-              if ('delete' in binding.attributes) {
-                binding.appendDeleteButton(elementBindings[0]);
-              }
-
-              elementBindings[0].setValue(v[i]);
-            });
+      var prefix = null;
+      var prefixFunction = null;
+      if ('prefix' in binding.attributes) {
+        try {
+          eval('var fn = function(index) {return '
+            + binding.attributes.prefix + ';}');
+          prefixFunction = fn;
+        } catch (ignore) {
+          prefix = binding.attributes.prefix;
         }
-      } else {
-        binding.element.innerText = 'CONTENT is not defined';
+      }
+
+      for (var i = 0; i < v.length; ++i) {
+        if (('delimiter' in binding.attributes) && (i > 0)) {
+          var span = document.createElement('SPAN');
+          span.innerHTML = binding.attributes.delimiter;
+          binding.listPart.appendChild(span);
+        }
+
+        if (prefixFunction != null) {
+          var span = document.createElement('SPAN');
+          span.innerHTML = prefixFunction(i).toString();
+          binding.listPart.appendChild(span);
+        } else if (prefix != null) {
+          var span = document.createElement('SPAN');
+          span.innerHTML = prefix;
+          binding.listPart.appendChild(span);
+        }
+
+        var contentTag = document.createElement('CONTENT');
+        binding.listPart.appendChild(contentTag);
+
+        interpretTag(contentTag, namespace)
+          .then(function(elementBindings, scripts) {
+            binding.addToModel(elementBindings);
+            binding.runScripts(scripts);
+
+            if ('delete' in binding.attributes) {
+              binding.appendDeleteButton(elementBindings[0]);
+            }
+
+            elementBindings[0].setValue(v[i]);
+          });
       }
     };
 
@@ -107,6 +131,7 @@
 
 <class name="table.dynamic" native export>
   <script>
+//console.log('Processing table dynamic');
     // The first tr inside a tbody will be treated as a template
     binding.tBody = null;
     binding.rowTemplate  = null;
@@ -124,6 +149,7 @@
     }
 
     if (binding.rowTemplate == null) {
+      console.log('Warning: Dynamic table is lacking a row template');
       return;
     }
 
@@ -216,6 +242,7 @@
             binding.unnamed.push(rowBinding);
             rowBinding.par = binding;
             rowBinding.addChangeListener(binding.notifyChange);
+            rowBinding.focus();
           });
 
         binding.notifyChange();
@@ -257,20 +284,17 @@
   </class>
   <script>
 //console.log('Processing script for router');
-    var contentInterpreter = namespace.get('CONTENT');
     var contentTag = document.createElement('CONTENT');
 
-    if (contentInterpreter != null) {
 //console.log('About to interpret content');
-      contentInterpreter(contentTag, namespace).then(function(bs, ss) {
+    interpretTag(contentTag, namespace).then(function(bs, ss) {
 //console.log('Done interpreting content');
 //console.log(bs);
         // Copy the content binding model to the model for the tag itself
-        binding.model = bs[0].model;
-        binding.runScripts(ss);
-        binding.setValueFromDataSource();
-      });
-    }
+      binding.model = bs[0].model;
+      binding.runScripts(ss);
+      binding.setValueFromDataSource();
+    });
 
     // Calling setValue on a router makes it show the specified page
     binding.setValue = function(pageName) {

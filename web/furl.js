@@ -1,6 +1,21 @@
 // furl.js
 
 var furl = (function() {
+  var trace = {
+    active: 0,
+    activate: function() {
+      ++trace.active;
+    },
+    deactivate: function() {
+      --trace.active;
+    },
+    message: function (m) {
+      if (trace.active > 0) {
+        console.log(m);
+      }
+    }
+  };
+
   var promise = function() {
     var p = {
       fulfilled: null,
@@ -30,6 +45,20 @@ var furl = (function() {
 
   var data = {
     sessionId: 'dummy',
+    permissions: {
+      app: {developer: false},
+      collections: {}
+    },
+    randomKeyAlphabet: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890',
+    randomKey: function() {
+      var len = data.randomKeyAlphabet.length;
+      var result = '';
+      for (var i = 0; i < 20; ++i) {
+        var idx = Math.floor(Math.random() * len);
+        result += data.randomKeyAlphabet.substr(idx, 1);
+      }
+      return result;
+    },
     collections: {},
     pendingUpdateQueues: [],
     updateQueue: {},
@@ -50,8 +79,24 @@ var furl = (function() {
       if (collection in data.collections) {
         var c = data.collections[collection];
       } else {
+        if (!data.permissions.app.developer) {
+          console.log('Warning: User has no permission to create collections');
+        }
+
         var c = {};
         data.collections[collection] = c;
+      }
+
+      if (item in c) {
+        if (!(collection in data.permissions.collections
+              && data.permissions.collections[collection].canUpdate)) {
+          console.log('Warning: User has no permission to update collection');
+        }
+      } else {
+        if (!(collection in data.permissions.collections
+              && data.permissions.collections[collection].canInsert)) {
+          console.log('Warning: User has no permission to insert into collection');
+        }
       }
 
       c[item] = value;
@@ -73,12 +118,18 @@ var furl = (function() {
       }
 
       if (item in c) {
+        if (!(collection in data.permissions.collections
+              && data.permissions.collections[collection].canDelete)) {
+          console.log('Warning: User has no permission to delete from collection');
+        }
+
         data.deleteQueue[item] = c[item];
         delete c[item];
       }
     },
     processQueue: function() {
       if (data.sessionId == '') {
+        trace.message('data.processQueue: Skipping because sessionId is blank');
         return;
       }
 
@@ -105,6 +156,7 @@ var furl = (function() {
 
       if (!anythingToDo) {
 //console.log('Nothing to do');
+        trace.message('data.processQueue: Skipping because nothing to do');
         return;
       }
 //console.log('Processing queue');
@@ -150,8 +202,11 @@ var furl = (function() {
         if (xhttp.readyState == 4) {
           if (xhttp.status == 200) {
             if (xhttp.responseText.trim() != 'ok') {
+              trace.message('data.processQueue: Update not ok');
               console.log(xhttp.responseText);
             } else {
+              trace.message('data.processQueue: Update ok');
+              
               // Small risk that a second update will start while a prior one
               // is still waiting to process. Address with locking?
               data.pendingUpdateQueues = [];
@@ -163,6 +218,7 @@ var furl = (function() {
         }
       };
 
+      trace.message('data.processQueue: Senting update request');
       xhttp.open('PUT', 'update.php', true);
 //console.log(JSON.stringify(message));
       xhttp.send(JSON.stringify(message));
@@ -181,6 +237,7 @@ var furl = (function() {
               if ('result' in response && response.result == 'success') {
                 data.collections = response.collections;
                 data.sessionId = response.sessionId;
+                data.permissions = response.permissions;
                 prom.fulfill(true, response.sessionId);
               } else {
                 prom.fulfill(false, response);
@@ -205,6 +262,7 @@ var furl = (function() {
 
   var namespace = function(parents) {
     var ns = {
+      key: data.randomKey(),
       name: 'root',
       parents: parents,
       vars: {},
@@ -227,6 +285,23 @@ var furl = (function() {
         } else {
           return null;
         }
+      },
+      setAtDefinition: function(name, value) {
+        var ucName = name.toUpperCase();
+        if (ucName in ns.vars) {
+          ns.vars[ucName] = value;
+//console.log(['Set!', value]);
+          return true;
+        } else if (parents != null) {
+          for (var i = 0; i < parents.length; ++i) {
+            var result = parents[i].setAtDefinition(ucName, value);
+
+            if (result == true) {
+              return result;
+            }
+          }
+        }
+        return false;
       },
       newChildNamespace: function(name, otherParents) {
         var childParents = [ns];
@@ -256,6 +331,7 @@ var furl = (function() {
 
   var newBinding = function(element) {
     var binding = {
+      key: data.randomKey(),
       element: element,
       modelType: 'Z', // Zero bindings
       model: {},
@@ -435,7 +511,7 @@ var furl = (function() {
     return binding;
   };
 
-  var interpretTag = function(element, ns, parentSourceContext) {
+  var interpretTag = function(element, ns) {
     var prom = promise();
 
     if ('ftype' in element.attributes) {
@@ -445,14 +521,18 @@ var furl = (function() {
       var fullTagName = element.tagName;
     }
 
-    var sourceContext = parentSourceContext + '.' + fullTagName;
+//console.log('Interpreting: ' + sourceContext);
+    if ('trace' in element.attributes) {
+      trace.activate();
+    }
 
-//console.log(sourceContext);
+    trace.message('Processing tag ' + fullTagName);
 
     var interpreter = ns.get(fullTagName);
     if (interpreter != null) {
-//console.log('222: Tag found for: ' + fullTagName);
-      interpreter(element, ns, sourceContext).then(function(bindings, scripts) {
+      trace.message('  Found a custom tag definition');
+
+      interpreter(element, ns).then(function(bindings, scripts) {
 //console.log('    Promise fulfilled');
 //console.log([bindings, scripts]);
         var container = element.parentElement;
@@ -461,6 +541,7 @@ var furl = (function() {
 //console.log(bindings);
 //console.log('Number of bindings returned by interpreter: '
 //+ bindings.length.toString());
+        trace.message('  Inserting replacement element(s) into parent');
 
         for (var i = 0; i < bindings.length; ++i) {
           var binding = bindings[i];
@@ -476,6 +557,7 @@ var furl = (function() {
         }
 
         if ((!bindsToExistingElement) && container != null) {
+          trace.message('  Removing original custom tag because it does not bind to an existing element');
 //console.log('Removing ' + element.tagName);
           container.removeChild(element);
         }
@@ -487,7 +569,10 @@ var furl = (function() {
 //if (element.tagName == 'TABLE.DYNAMIC') {
 //console.log(ns);
 //}
+      trace.message('  No custom tag definition found');
+
       if ('value' in element) {
+        trace.message('  Creating simple binding for element with value');
 //console.log('252: Tag not found in namespace: ' + element.tagName);
 //console.log(ns);
         var binding = newBinding(element);
@@ -511,7 +596,7 @@ var furl = (function() {
           binding.element.focus();
         };
 
-        interpretChildElements(element, ns, sourceContext)
+        interpretChildElements(element, ns)
           .then(function(bindings, scripts) {
           binding.addToModel(bindings);
           binding.runScripts(scripts, ns);
@@ -519,9 +604,11 @@ var furl = (function() {
           prom.fulfill([binding], []);
         });
       } else if ('name' in element.attributes) {
+        trace.message('  Creating simple binding for element with name');
+
         var binding = newBinding(element);
 
-        interpretChildElements(element, ns, sourceContext)
+        interpretChildElements(element, ns)
           .then(function(bindings, scripts) {
           binding.addToModel(bindings);
           binding.runScripts(scripts, ns);
@@ -529,7 +616,9 @@ var furl = (function() {
           prom.fulfill([binding], []);
         });
       } else {
-        interpretChildElements(element, ns, sourceContext)
+        trace.message('  Creating no binding for element');
+
+        interpretChildElements(element, ns)
           .then(function(bindings, scripts) {
           prom.fulfill(bindings, scripts);
         });
@@ -539,7 +628,7 @@ var furl = (function() {
     return prom;
   };
 
-  var interpretChildElements = function(container, ns, parentSourceContext) {
+  var interpretChildElements = function(container, ns) {
     var interpreterPromise = promise();
     var childBindings = [];
     var childScripts = [];
@@ -555,7 +644,7 @@ var furl = (function() {
 //console.log(element);
         var nextSibling = element.nextElementSibling;
 
-        interpretTag(element, ns, parentSourceContext)
+        interpretTag(element, ns)
           .then(function(bindings, scripts) {
           for (var i = 0; i < bindings.length; ++i) {
             childBindings.push(bindings[i]);
@@ -590,7 +679,7 @@ var furl = (function() {
     return ns;
   };
 
-  root.set('CLASS', function(template, definingNamespace, parentSourceContext) {
+  root.set('CLASS', function(template, definingNamespace) {
     var classPromise = promise();
 
     if (!('name' in template.attributes)) {
@@ -599,21 +688,12 @@ var furl = (function() {
       return classPromise;
     }
 
-    var classSourceContext = parentSourceContext + '.CLASS('
-      + template.attributes.name.value + ')';
-
 //console.log('321: CLASS ' + template.attributes.name.value);
 
-    var interpreter = function(element, includingNamespace, parentSourceContext) {
+    var interpreter = function(element, includingNamespace) {
 //console.log('Calling class interpreter');
       var instancePromise = promise();
       var instanceNamespace = definingNamespace.newChildNamespace('INST');
-
-      var instanceSourceContext = '('
-        + parentSourceContext + '.' + element.tagName
-        + (('name' in element.attributes) ? '(' + element.attributes.name.value
-          + ')' : '')
-        + '<' + classSourceContext + ')';
 
       // Define the <CONTENT> tag so it can be referenced within the class
       // 
@@ -626,14 +706,10 @@ var furl = (function() {
           'CONTENT.instance+context=content',
           [n, includingNamespace]);
 
-        var contentSourceContext = '('
-          + psc + '.CONTENT' + '<' + instanceSourceContext + ')';
-
         contentBinding.element.innerHTML = element.innerHTML + e.innerHTML;
 
-        interpretChildElements(contentBinding.element, contentNamespace,
-          contentSourceContext).then(
-          function(bindings, scripts) {
+        interpretChildElements(contentBinding.element, contentNamespace)
+          .then(function(bindings, scripts) {
             contentBinding.addToModel(bindings);
             contentBinding.runScripts(scripts, contentNamespace);
             contentBinding.setValueFromDataSource();
@@ -672,8 +748,8 @@ var furl = (function() {
         instanceBinding.element.innerHTML = template.innerHTML;
       }
 
-      interpretChildElements(instanceBinding.element, instanceNamespace,
-        instanceSourceContext).then(
+      interpretChildElements(instanceBinding.element, instanceNamespace)
+        .then(
         function(bindings, scripts) {
           instanceBinding.addToModel(bindings);
           instanceBinding.runScripts(otherScripts, instanceNamespace);
@@ -705,7 +781,7 @@ var furl = (function() {
     return classPromise;
   });
 
-  root.set('USING', function(element, declaringNamespace, parentSourceContext) {
+  root.set('USING', function(element, declaringNamespace) {
     var prom = promise();
 
     if (!('src' in element.attributes)) {
@@ -714,8 +790,6 @@ var furl = (function() {
       return prom;
     }
 //console.log('399: USING ' + element.attributes.src.value);
-    var sourceContext = parentSourceContext
-      + '(' + element.attributes.src.value + ')';
 
     var xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
@@ -726,7 +800,7 @@ var furl = (function() {
           libraryBinding.element.innerHTML = xhttp.responseText;
           var libraryNamespace = root.newLibraryNamespace(
             element.attributes.src.value);
-          interpretTag(libraryBinding.element, libraryNamespace, sourceContext)
+          interpretTag(libraryBinding.element, libraryNamespace)
             .then(function(bindings) {
               // Import everything from the library into this namespace
               var contentNamespace = declaringNamespace.newChildNamespace('USING');
@@ -740,8 +814,7 @@ var furl = (function() {
 
 //console.log('About to process children of ' + sourceContext);
 //console.log(element.outerHTML);
-              interpretChildElements(usingBinding.element, contentNamespace,
-                sourceContext)
+              interpretChildElements(usingBinding.element, contentNamespace)
                 .then(function(bindings, scripts) {
                 if (element.parentElement != null) {
                   var par = element.parentElement;
@@ -768,8 +841,7 @@ var furl = (function() {
 
     return prom;
   });
-  root.set('SCRIPT', function(element, namespace, parentSourceContext) {
-    var sourceContext = parentSourceContext + '.class';
+  root.set('SCRIPT', function(element, namespace) {
     var prom = promise();
     prom.fulfill([], [element.innerText]);
     return prom;
@@ -787,14 +859,16 @@ var furl = (function() {
         binding.addToModel(bs);
         binding.runScripts(scripts, ns);
         binding.setValueFromDataSource();
-        prom.fulfill(binding);
+        prom.fulfill(binding, []);
       });
       return prom;
     },
     login: data.login,
+    pageBinding: null,
     loadPage: function(url, target) {
       var prom = promise();
       var binding = newBinding(document.createElement('SPAN'));
+      furl.pageBinding = binding;
       var ns = root.newChildNamespace('PAGE');
 
       var targetToUse = (target == null ? document.body : target);
@@ -811,7 +885,7 @@ var furl = (function() {
                 binding.setValueFromDataSource(scripts);
                 targetToUse.innerHTML = '';
                 targetToUse.appendChild(binding.element);
-                prom.fulfill(binding);
+                prom.fulfill(binding, []);
               });
           } else {
             target.innerHTML = 'Error: ' + xhttp.status.toString;
@@ -822,7 +896,11 @@ var furl = (function() {
       xhttp.open('GET', url + '?' + data.sessionId, true);
       xhttp.send(); 
     },
-    data: data
+    data: data,
+    trace: trace,
+
+    // For debugging
+    global: {}
   };
 
   return furl;

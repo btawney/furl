@@ -27,6 +27,37 @@
       return;
     } else {
       print "{\"result\":\"success\",\"sessionId\":\"$sessionId\",\n";
+
+      print "\"permissions\":{\n";
+      print "\"app\":\n";
+
+      print json_encode($db->appPermissions());
+
+      print ",\n"; // End app permissions
+      print "\"collections\":{\n";
+
+      $firstCollection = true;
+      foreach ($db->collectionPermissions() as $row) {
+        if ($firstCollection) {
+          $firstCollection = false;
+        } else {
+          print ",\n";
+        }
+
+        print "\"$row->name\":{\n";
+        print '"canSelect":' . ($row->canSelect > 0 ? 'true' : 'false')
+          . ",\n";
+        print '"canInsert":' . ($row->canInsert > 0 ? 'true' : 'false')
+          . ",\n";
+        print '"canUpdate":' . ($row->canUpdate > 0 ? 'true' : 'false')
+          . ",\n";
+        print '"canDelete":' . ($row->canDelete > 0 ? 'true' : 'false');
+        print "}";
+      }
+
+      print "\n}\n"; // End collections permissions
+      print "},\n"; // end permissions
+
       print "\"collections\":{\n";
 
       $firstCollection = true;
@@ -38,6 +69,7 @@
         }
 
         print "\"$name\":{\n";
+
         $firstItem = true;
         foreach ($db->getItems($id) as $itemId => $content) {
           if ($firstItem) {

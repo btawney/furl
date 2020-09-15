@@ -88,6 +88,7 @@
     }
 
     function query($sql) {
+//print "$sql\n";
       $result = array();
       if ($qr = $this->connection->query($sql)) {
         while ($row = $qr->fetch_assoc()) {
@@ -196,7 +197,7 @@
         . ' JOIN collection c ON c.id = cr.collectionId'
         . ' WHERE s.id = @sessionId'
         . ' AND c.name = @name'
-        . ' AND cr.canUpdate');
+        . ' AND cr.canInsert');
 
       return ($c > 0);
     }
@@ -231,6 +232,17 @@
       return ($c > 0);
     }
 
+    function isDeveloper() {
+      $c = $this->queryScalar('SELECT COUNT(*)'
+        . ' FROM session s'
+        . ' JOIN userRole ur ON ur.userId = s.userId'
+        . ' JOIN role r ON r.id = ur.roleId'
+        . ' WHERE s.id = @sessionId'
+        . ' AND r.developer = TRUE');
+
+      return ($c > 0);
+    }
+
     function getCollectionId($name) {
       $this->setString('name', $name);
       $collectionId = $this->queryScalar('SELECT c.id'
@@ -248,21 +260,27 @@
         return $collectionId;
       } else {
         // Does this user have permission to create the collection?
-        $userCan = $this->queryScalar('SELECT COUNT(*)'
-          . ' FROM session s'
-          . ' JOIN userRole ur ON ur.userId = s.userId'
-          . ' JOIN appRole ar ON ar.roleId = ur.roleId'
-          . ' WHERE s.id = @sessionId'
-          . ' AND ar.canCreateCollection = TRUE');
-
-        if ($userCan > 0) {
+        if ($this->isDeveloper()) {
 //print "User can create collection\n";
-          return $this->exec('INSERT INTO collection'
+          $collectionId = $this->exec('INSERT INTO collection'
             . ' (name, appId)'
             . ' SELECT @name, u.appId'
             . ' FROM session s'
             . ' JOIN user u ON u.id = s.userId'
             . ' WHERE s.id = @sessionId');
+
+          $this->setInteger('collectionId', $collectionId);
+
+          // Developer roles automatically get full access to collections
+          $this->exec('INSERT INTO collectionRole'
+            . ' (collectionId, roleId)'
+            . ' SELECT @collectionId, r.id'
+            . ' FROM session s'
+            . ' JOIN user u ON u.id = s.userId'
+            . ' JOIN role r ON r.appId = u.appId'
+            . ' WHERE r.developer = TRUE');
+
+          return $collectionId;
         } else {
 //print "User cannot create collection: '$name'\n";
         }
@@ -309,6 +327,26 @@
       $this->exec('DELETE FROM item'
         . ' WHERE id = @itemId'
         . ' AND collectionId = @collectionId');
+    }
+
+    function appPermissions() {
+      $record = new Record();
+      $record->developer = $this->isDeveloper();
+      return $record;
+    }
+
+    function collectionPermissions() {
+      return $this->query('SELECT'
+        . ' c.name, MAX(cr.canInsert) AS canInsert,'
+        . ' MAX(cr.canUpdate) AS canUpdate,'
+        . ' MAX(cr.canDelete) AS canDelete,'
+        . ' MAX(cr.canSelect) AS canSelect'
+        . ' FROM session s'
+        . ' JOIN userRole ur ON ur.userId = s.userId'
+        . ' JOIN collectionRole cr ON cr.roleId = ur.roleId'
+        . ' JOIN collection c ON c.id = cr.collectionId'
+        . ' WHERE s.id = @sessionId'
+        . ' GROUP BY c.name');
     }
   }
 ?>

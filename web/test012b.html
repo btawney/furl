@@ -1,16 +1,19 @@
 <using src="common.html">
   <using src="test012lib.html">
     <h1>Add New Item</h1>
-    <table>
-      <tr>
-        <td>Lemmas:</td>
-        <td><lemmas name="lemmas" /></td>
-      </tr>
-      <tr>
-        <td>Part of Speech:</td>
-        <td><selectPartOfSpeech name="partOfSpeech" /></td>
-      </tr>
-    </table>
-    <imeInput name="x" />
+    <lexicalentry name="lex"></lexicalentry>
+    <button name="save">Save and Add New</button>
+    <script>
+      furl.global.lex = binding;
+
+      binding.model.save.element.addEventListener('click', function(evt) {
+        var entry = binding.model.lex.getValue();
+        var key = data.randomKey();
+        data.setValue('lexicon', key, entry);
+        binding.model.lex.setValue(
+          {lemmas: [], partOfSpeech: 'n', definitions: []}
+          );
+      });
+    </script>
   </using>
 </using>

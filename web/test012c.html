@@ -1,1 +1,41 @@
-Search Page
+<using src="common.html">
+  <using src="test012lib.html">
+    <h1>Search</h1>
+    <input name="term" />
+    <button name="search">Search</button>
+    <hr />
+    <script>
+      binding.model.search.element.addEventListener('click', function(evt) {
+        var term = binding.model.term.getValue();
+        var results = [];
+
+        for (key in data.collections.lexicon) {
+          var entry = data.collections.lexicon[key];
+          for (var i = 0; i < entry.lemmas.length; ++i) {
+            var lemma = entry.lemmas[i];
+
+            if (lemma.indexOf(term) == 0 || lemma.indexOf(' ' + term) >= 0) {
+              results.push({
+                lemma: lemma,
+                definitions: entry.definitions
+              });
+            }
+          }
+        }
+        binding.model.results.setValue(results);
+      });
+    </script>
+    <list name="results">
+      <b><literal name="lemma"></literal></b>
+      <list name="definitions">
+        <index></index>.
+        <literal name="definition"></literal>
+        (<i><literal name="source"></literal></i>)
+      </list>
+      <br />
+      <script>
+        // Add event listener
+      </script>
+    </list>
+  </using>
+</using>
