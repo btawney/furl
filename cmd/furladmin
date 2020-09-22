@@ -1,0 +1,120 @@
+#!/bin/bash
+
+main() {
+  DONE=false
+
+  while [ "$DONE" = "false" ]
+  do
+    echo "1. Create a new app"
+    echo "2. Administer an existing app"
+    echo "x. Exit"
+
+    read X
+
+    case "$X" in
+      1)
+        appCreate
+        ;;
+      2)
+        appAdmin
+        ;;
+      x|X|q|Q|exit|quit)
+        DONE=true
+        ;;
+    esac
+  done
+}
+
+appCreate() {
+  read -p "App Name: " APPNAME
+  php $0.php add app $APPNAME
+  read -p "Press <ENTER> to continue..." X
+}
+
+appAdmin() {
+  read -p "App Name: " APPNAME
+
+  DONE2=false
+
+  while [ "$DONE2" = "false" ]
+  do
+    echo "3. Add role"
+    echo "4. Add user"
+    echo "5. Change password"
+    echo "6. Add role to user"
+    echo "7. Add collection"
+    echo "8G. Grant role permissions on collection"
+    echo "8R. Revoke role permissions on collection"
+    echo "9G. Grant developer role"
+    echo "9R. Revoke developer role"
+    echo "L. List app configuration"
+    echo "X. Exit"
+
+    read X
+
+    case "$X" in
+      3)
+        read -p "Role: " ROLENAME
+        php $0.php app $APPNAME add role $ROLENAME
+        read -p "Press <ENTER> to continue..."
+        ;;
+      4)
+        read -p "User: " USERNAME
+        php $0.php app $APPNAME add user $USERNAME
+        read -p "Press <ENTER> to continue..."
+        ;;
+      5)
+        read -p "User: " USERNAME
+        read -p "Password: " -s PASSWORD
+        export PASSWORD
+        php $0.php app $APPNAME user $USERNAME password
+        read -p "Press <ENTER> to continue..."
+        ;;
+      6)
+        read -p "User: " USERNAME
+        read -p "Role: " ROLENAME
+        php $0.php app $APPNAME user $USERNAME add role $ROLENAME
+        read -p "Press <ENTER> to continue..."
+        ;;
+      7)
+        read -p "Collection: " COLLNAME
+        php $0.php app $APPNAME add collection $COLLNAME
+        read -p "Press <ENTER> to continue..."
+        ;;
+      8G|8g)
+        read -p "Collection: " COLLNAME
+        read -p "Role: " ROLENAME
+        php $0.php app $APPNAME collection $COLLNAME add role $ROLENAME
+        read -p "Permissions (select|insert|update|delete|all): " PERMS
+        php $0.php app $APPNAME collection $COLLNAME role $ROLENAME grant $PERMS
+        read -p "Press <ENTER> to continue..."
+        ;;
+      8R|8r)
+        read -p "Collection: " COLLNAME
+        read -p "Role: " ROLENAME
+        read -p "Permissions (select|insert|update|delete|all): " PERMS
+        php $0.php app $APPNAME collection $COLLNAME role $ROLENAME revoke $PERMS
+        read -p "Press <ENTER> to continue..."
+        ;;
+      9G|9g)
+        read -p "Role: " ROLENAME
+        php $0.php app $APPNAME role $ROLENAME grant developer
+        read -p "Press <ENTER> to continue..."
+        ;;
+      9R|9r)
+        read -p "Role: " ROLENAME
+        php $0.php app $APPNAME role $ROLENAME revoke developer
+        read -p "Press <ENTER> to continue..."
+        ;;
+      L|l)
+        php $0.php app $APPNAME list
+        read -p "Press <ENTER> to continue..."
+        ;;
+      X|x|Q|q|exit|quit)
+        DONE2=true
+        ;;
+    esac
+  done
+}
+
+main

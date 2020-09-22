@@ -27,12 +27,93 @@
           case 'coll':
             $cs = 'collection';
             break;
+          case 'password':
+            if ($currentUserId >= 0) {
+              $password = getenv('PASSWORD');
+              if ($password !== false) {
+                $db->changePassword($currentUserId, $password);
+              } else {
+                print "Password environment variable not set\n";
+                exit;
+              }
+            } else {
+              print "Need a user to set password for\n";
+              exit;
+            }
+            break;
+          case 'list':
+            if ($currentAppId >= 0) {
+              $config = $db->listAppConfiguration($currentAppId);
+              print "Roles:\n";
+              foreach ($config->roles as $role) {
+                print "  $role->id: $role->name " . ($role->developer == 1 ? '(developer)' : '') . "\n";
+              }
+              print "Users:\n";
+              foreach ($config->users as $user) {
+                print "  $user->id: $user->name (";
+                $first = true;
+                foreach ($user->roles as $role) {
+                  if ($first) {
+                    $first = false;
+                  } else {
+                    print ", ";
+                  }
+                  print $role;
+                }
+                print ")\n";
+              }
+              print "Collections:\n";
+              foreach ($config->collections as $collection) {
+                print "  $collection->id: $collection->name\n";
+                foreach ($collection->roles as $role) {
+                  print "    " . $role->name . " (";
+                  $first = true;
+                  if ($role->canSelect == 1) {
+                    if ($first) {
+                      $first = false;
+                    } else {
+                      print ", ";
+                    }
+                    print "select";
+                  }
+                  if ($role->canInsert == 1) {
+                    if ($first) {
+                      $first = false;
+                    } else {
+                      print ", ";
+                    }
+                    print "insert";
+                  }
+                  if ($role->canUpdate == 1) {
+                    if ($first) {
+                      $first = false;
+                    } else {
+                      print ", ";
+                    }
+                    print "update";
+                  }
+                  if ($role->canDelete == 1) {
+                    if ($first) {
+                      $first = false;
+                    } else {
+                      print ", ";
+                    }
+                    print "delete";
+                  }
+                  print ")\n";
+                }
+              }
+            } else {
+              print_r($db->listApps());
+            }
+            break;
           case 'help':
           case '?':
           case '-?':
             print "Usage:\n";
             print "  furladmin.php add app <name>\n";
             print "  furladmin.php app <name> add {user|role|collection} <name>\n";
+            print "  furladmin.php user <name> password <password>\n";
             print "\n";
             print "  furladmin.php app <name> {user|collection} <name> {add|remove} role <name>\n";
             print "\n";
@@ -89,8 +170,8 @@
         break;
       case 'add collection':
         if ($currentAppId > 0) {
-          $currentCollectionId = $db->getCollectionId($arg, true);
-          print "$Collection $arg: Id = $currentCollectionId\n";
+          $currentCollectionId = $db->getCollectionId($currentAppId, $arg, true);
+          print "Collection $arg: Id = $currentCollectionId\n";
           $cs = 'ready';
         } else {
           print "App not specified\n";
@@ -165,7 +246,7 @@
         break;
       case 'grant':
         switch (strtolower($arg)) {
-          case 'create':
+          case 'developer':
             if ($currentRoleId >= 0) {
               $db->changeCreate($currentRoleId, true);
               print "Granted\n";
@@ -195,7 +276,7 @@
         break;
       case 'revoke':
         switch (strtolower($arg)) {
-          case 'create':
+          case 'developer':
             if ($currentRoleId >= 0) {
               $db->changeCreate($currentRoleId, false);
               print "Granted\n";

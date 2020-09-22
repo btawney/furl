@@ -401,7 +401,7 @@ var furl = (function() {
         switch (binding.modelType) {
           case 'N':
             for (var name in binding.model) {
-              if (name in v) {
+              if (typeof(v) == 'object' && v != null && name in v) {
                 binding.model[name].setValue(v[name]);
               }
             }
@@ -693,7 +693,8 @@ var furl = (function() {
     var interpreter = function(element, includingNamespace) {
 //console.log('Calling class interpreter');
       var instancePromise = promise();
-      var instanceNamespace = definingNamespace.newChildNamespace('INST');
+      var instanceNamespace = definingNamespace.newChildNamespace('INST',
+        [includingNamespace]);
 
       // Define the <CONTENT> tag so it can be referenced within the class
       // 
@@ -729,30 +730,29 @@ var furl = (function() {
       // The instance of the class is a child of the including document
       var instanceBinding = newBinding(element);
 
-      var otherScripts = [];
-      if ('native' in template.attributes) {
-        // Native classes are standard HTML tags that we create a binding for
-        // For that reason, the only thing that might be in the body
-        // of a native class would be some Javascript, which we need to
-        // execute.
-        var childElement = template.firstElementChild;
-        while (childElement != null) {
-          if (childElement.tagName == 'SCRIPT') {
-            otherScripts.push(childElement.innerText);
+      var preScripts = [];
+      var childElement = template.firstElementChild;
+      while (childElement != null) {
+        if (childElement.tagName == 'SCRIPT') {
+          if ('preprocess' in childElement.attributes) {
+            preScripts.push(childElement.innerText);
           }
-
-          childElement = childElement.nextElementSibling;
         }
-      } else {
+
+        childElement = childElement.nextElementSibling;
+      }
+
+      if (!('native' in template.attributes)) {
         instanceBinding.element = document.createElement('SPAN');
         instanceBinding.element.innerHTML = template.innerHTML;
       }
+
+      instanceBinding.runScripts(preScripts, instanceNamespace);
 
       interpretChildElements(instanceBinding.element, instanceNamespace)
         .then(
         function(bindings, scripts) {
           instanceBinding.addToModel(bindings);
-          instanceBinding.runScripts(otherScripts, instanceNamespace);
           instanceBinding.runScripts(scripts, instanceNamespace);
           instanceBinding.setValueFromDataSource();
 //console.log('Fulfilling class instance promise');
@@ -767,8 +767,10 @@ var furl = (function() {
     // Make the class available to its neighbors
     if (definingNamespace.parent == null) {
       definingNamespace.set(tagName, interpreter);
+//console.log([tagName, definingNamespace]);
     } else {
       definingNamespace.parent.set(tagName, interpreter);
+//console.log([tagName, definingNamespace.parent]);
     }
 
     // Export the class to users of its library
@@ -843,7 +845,14 @@ var furl = (function() {
   });
   root.set('SCRIPT', function(element, namespace) {
     var prom = promise();
-    prom.fulfill([], [element.innerText]);
+
+    // If this script is marked 'preprocess' then don't send its text back,
+    // that will be handled in the CLASS handler
+    if ('preprocess' in element.attributes) {
+       prom.fulfill([], []);
+    } else {
+      prom.fulfill([], [element.innerText]);
+    }
     return prom;
   });
 

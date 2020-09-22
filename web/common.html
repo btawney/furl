@@ -130,7 +130,7 @@
 </class>
 
 <class name="table.dynamic" native export>
-  <script>
+  <script preprocess>
 //console.log('Processing table dynamic');
     // The first tr inside a tbody will be treated as a template
     binding.tBody = null;
@@ -140,6 +140,7 @@
       binding.tBody = binding.element.tBodies[i];
       for (var j = 0; j < binding.tBody.rows.length; ++j) {
         binding.rowTemplate = binding.tBody.rows[j];
+//console.log(binding.rowTemplate.innerHTML);
         binding.tBody.removeChild(binding.rowTemplate);
         break;        
       }
@@ -164,9 +165,9 @@
         }
 
         var newRow = binding.rowTemplate.cloneNode(true);
+
         var rowBinding = newBinding(newRow);
         binding.tBody.appendChild(newRow);
-
         interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
           .then(function(bindings, scripts) {
 //console.log(b);
@@ -230,6 +231,7 @@
         var rowBinding = newBinding(newRow);
         binding.tBody.appendChild(newRow);
 
+//console.log(namespace);
         interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
           .then(function(bindings, scripts) {
 //console.log(b);
@@ -339,3 +341,47 @@
     });
   </script>
 </class>
+
+<class name="roster" export>
+  <script>
+    // The body of a roster is a list of elements, each of which will get its own row in a table
+    var originalElement = binding.element;
+    binding.element = document.createElement('TABLE');
+    binding.element.className = originalElement.className;
+
+    var contentTag = document.createElement('CONTENT');
+    interpretTag(contentTag, namespace).then(function(bindings, scripts) {
+      binding.addToModel(bindings);
+      for (var i = 0; i < bindings.length; ++i) {
+        var row = binding.element.insertRow();
+        var cell = row.insertCell();
+        cell.appendChild(bindings[i].element);
+        binding.runScripts(scripts);
+      }
+    });
+  </script>
+</class>
+
+<class name="checkbox" export>
+  <input type="checkbox"></input>
+  <script>
+    binding.inputElement = binding.element.firstElementChild;
+
+    binding.getValue = function() {
+      return binding.inputElement.checked;
+    };
+
+    binding.setValue = function(v) {
+      binding.original = v;
+      binding.inputElement.checked = v;
+    };
+    binding.focus = function() {
+      binding.inputElement.focus();
+    };
+
+    binding.inputElement.addEventListener('change', function(evt) {
+      binding.notifyChange();
+    });
+  </script>
+</class>
+

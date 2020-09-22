@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Furl Markup Designer</title>
+    <script src="furl.js"></script>
+    <link rel="stylesheet" href="common.css"></link>
+    <link rel="icon" type="image/png" href="furl.png"></link>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+    <script>
+      var binding = null;
+
+      function onLoad() {
+        furl.login('designer', 'btawney', 'temp1234').then(
+          function(success, detail) {
+            if (success) {
+              var currentProject = furl.data.getValue('currentProject', 'latest');
+              if (currentProject != null) {
+                document.getElementById('markup').value = currentProject.markup;
+                document.getElementById('currentValue').value = currentProject.currentValue;
+              }
+            } else {
+              console.log(detail);
+            }
+          });
+      }
+
+      function saveLatest() {
+        var latest = {
+          markup: document.getElementById('markup').value,
+          currentValue: document.getElementById('currentValue').value
+        };
+        var x = new Date();
+        var dt = x.getFullYear().toString() + '-' + x.getMonth().toString()
+          + '-' + x.getDate().toString() + '-' + x.getHours().toString()
+          + '-' + x.getMinutes().toString() + '-' + x.getSeconds().toString();
+        furl.data.setValue('currentProject', 'latest', latest);
+        furl.data.setValue('currentProject', dt, latest);
+      }
+
+      function render() {
+        saveLatest();
+        var markup = document.getElementById('markup').value;
+        document.getElementById('target').innerHTML = markup;
+        furl.process(document.getElementById('target')).then( function(bs, ss) {
+          binding = bs;
+        });
+      }
+
+      function getValue() {
+        document.getElementById('currentValue').value = JSON.stringify(binding.getValue());
+        saveLatest();
+      }
+
+      function setValue() {
+        saveLatest();
+        binding.setValue(JSON.parse(document.getElementById('currentValue').value));
+      }
+
+      function showModel() {
+        var showSpace = document.getElementById('showSpace');
+        var recurse = function(element, b, label, depth) {
+          var span = document.createElement('SPAN');
+          var result = '';
+          for (var i = 0; i < depth; ++i) {
+            result += ' &nbsp; &nbsp; ';
+          }
+          result += label + '<br />';
+          span.innerHTML = result;
+          span.addEventListener('click', function() {
+            console.log(b);
+          });
+          element.appendChild(span);
+          for (var name in b.model) {
+            recurse(element, b.model[name], name, depth + 1);
+          }
+          for (var i = 0; i < b.unnamed.length; ++i) {
+            recurse(element, b.unnamed[i], '[' + i.toString() + ']', depth + 1);
+          }
+        };
+        showSpace.innerHTML = '';
+        recurse(showSpace, binding, 'root binding', 0);
+      }
+    </script>
+  </head>
+  <body onload="onLoad()">
+    <textarea id="markup" style="width:100%"></textarea>
+    <button onclick="render()">Render</button>
+    <hr />
+    <span id="target"></span>
+    <hr />
+    <button onclick="getValue()">Get Value</button><br />
+    <input style="width:100%" id="currentValue"></input>
+    <button onclick="setValue()">Set Value</button><br />
+    <hr />
+    <button onclick="showModel()">Show Model</button>
+    <div id="showSpace"></div>
+  </body>
+</html>
+

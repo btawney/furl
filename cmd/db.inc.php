@@ -61,6 +61,7 @@
     }
 
     function queryEnumeratedArray($sql) {
+//print "$sql\n";
       $result = array();
       if ($qr = $this->connection->query($sql)) {
         while ($row = $qr->fetch_row()) {
@@ -134,11 +135,21 @@
     }
 
     function setInteger($name, $value) {
+//print "SELECT @$name := '" . $value . "';";
       $this->set($name, 'i', $value);
     }
 
     function setString($name, $value) {
       $this->set($name, 's', $value);
+    }
+
+    function setPassword($name, $value) {
+      $nameToUse = $this->clean($name);
+      $statement = $this->connection->prepare("SELECT @$nameToUse := PASSWORD(?)");
+      $statement->bind_param('s', $value);
+      $statement->bind_result($result);
+      $statement->execute();
+      return $result;
     }
 
     function setDouble($name, $value) {
@@ -198,6 +209,12 @@
       }
     }
 
+    function changePassword($userId, $password) {
+      $this->setInteger('userId', $userId);
+      $this->setPassword('password', $password);
+      $this->exec('UPDATE user SET password = @password WHERE id = @userId');
+    }
+
     function getRoleId($appId, $name, $addIfNotExists = false) {
       $this->setInteger('appId', $appId);
       $this->setString('name', $name);
@@ -227,7 +244,7 @@
           . ' WHERE u.id = @userId');
       } else {
         $this->setInteger('roleId', $roleId);
-        $db->exec('INSERT INTO userRole'
+        $this->exec('INSERT INTO userRole'
           . ' (roleId, userId)'
           . ' VALUES (@roleId, @userId)');
       }
@@ -255,7 +272,7 @@
       $this->setInteger('roleId', $roleId);
 
       $this->exec('UPDATE role'
-        . ' SET canCreateCollection = ' . ($grant ? 'TRUE' : 'FALSE')
+        . ' SET developer = ' . ($grant ? 'TRUE' : 'FALSE')
         . ' WHERE id = @roleId');
     }
 
@@ -290,6 +307,41 @@
           . ' WHERE roleId = @roleId'
           . ' AND collectionId = @collectionId');
       }
+    }
+
+    function getApps() {
+      return $this->queryEnumeratedArray('SELECT name FROM app');
+    }
+
+    function listAppConfiguration($appId) {
+      $this->setInteger('appId', $appId);
+      $result = new Record();
+
+      $result->roles = $this->query('SELECT * FROM role'
+        . ' WHERE appId = @appId');
+
+      $result->users = $this->query('SELECT * FROM user'
+        . ' WHERE appId = @appId');
+      foreach ($result->users as $user) {
+        $this->setInteger('userId', $user->id);
+        $user->roles = $this->queryEnumeratedArray('SELECT r.name'
+          . ' FROM userRole ur'
+          . ' JOIN role r ON r.id = ur.roleId'
+          . ' WHERE ur.userId = @userId');
+      }
+
+      $result->collections = $this->query('SELECT * FROM collection'
+        . ' WHERE appId = @appId');
+      foreach ($result->collections as $collection) {
+        $this->setInteger('collectionId', $collection->id);
+        $collection->roles = $this->query('SELECT r.name, cr.canSelect,'
+          . ' cr.canInsert, cr.canUpdate, cr.canDelete'
+          . ' FROM collectionRole cr'
+          . ' JOIN role r ON r.id = cr.roleId'
+          . ' WHERE cr.collectionId = @collectionId');
+      }
+
+      return $result;
     }
   }
 ?>
