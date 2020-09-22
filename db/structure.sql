@@ -9,13 +9,6 @@ CREATE TABLE `app` (
   KEY `name` (`name`(32))
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8
 
-CREATE TABLE `appRole` (
-  `appId` int(10) unsigned NOT NULL,
-  `roleId` int(10) unsigned NOT NULL,
-  `canCreateCollection` tinyint(1) DEFAULT NULL,
-  KEY `appId` (`appId`,`roleId`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8
-
 CREATE TABLE `collection` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `name` tinytext,
@@ -45,9 +38,10 @@ CREATE TABLE `role` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `name` tinytext,
   `appId` int(10) unsigned NOT NULL,
+  `developer` binary(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `appUser` (`appId`,`name`(32))
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8
+  UNIQUE KEY `appUser` (`appId`,`name`(32))
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8
 
 CREATE TABLE `session` (
   `id` varchar(20) NOT NULL,
@@ -62,7 +56,7 @@ CREATE TABLE `user` (
   `appId` int(10) unsigned NOT NULL,
   PRIMARY KEY (`id`),
   KEY `appUser` (`appId`,`name`(32))
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8
 
 CREATE TABLE `userRole` (
   `userId` int(10) unsigned NOT NULL,
