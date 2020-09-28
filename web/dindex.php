@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <?php
+    function reloadPath($path) {
+      if (file_exists($path)) {
+        $mtime = filemtime($path);
+        print "$path?$mtime";
+      } else {
+        print $path;
+      }
+    }
+  ?>
+  <head>
+    <meta charset="UTF-8">
+    <title>Furl Template Index</title>
+    <script src="<?php reloadPath('furl.js'); ?>"></script>
+    <link rel="stylesheet" href="<?php reloadPath('common.css'); ?>"></link>
+    <link rel="icon" type="image/png" href="furl.png"></link>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+    <script>
+      var binding = null;
+
+      function onLoad() {
+        furl.process(document.body).then(function(b) {
+          binding = b;
+        });
+      }
+
+      function login() {
+        var credentials = binding.getValue();
+
+        furl.login('appname', credentials.user, credentials.password).then(
+          function(success, detail) {
+            if (success) {
+              furl.loadPage('appmain.html');
+            } else {
+              console.log(detail);
+            }
+          });
+      }
+    </script>
+  </head>
+  <body>
+    <using src="common.html">
+      <table class="login">
+        <tr>
+          <td>User: </td>
+          <td><input name="user" /></td>
+        </tr>
+        <tr>
+          <td>Password: </td>
+          <td><input name="password" type="password" /></td>
+        </tr>
+        <tr>
+          <td colspan="2" align="center">
+            <button onclick="login()">Login</button>
+          </td>
+        </tr>
+      </table>
+    </using>
+  </body>
+</html>
+

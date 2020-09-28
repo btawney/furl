@@ -1,0 +1,96 @@
+input {
+  font-size: large;
+  width: 100%;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: 10px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  border-color: grey;
+}
+
+button {
+  font-size: large;
+  width: 100%;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: 10px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+div.centered {
+  padding-top: 50%;
+  padding-bottom: 50%;
+  text-align: center;
+}
+
+div.furlFolder {
+  width: 80%;
+  padding: 10px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+  border-right-width: 1px;
+  border-bottom-width: 0px;
+  border-style: solid;
+  border-top-color: lightgrey;
+  border-left-color: lightgrey;
+  border-right-color: darkgrey;
+  border-bottom-color: darkgrey;
+}
+div.furlFolderUnselected {
+  background-color: white;
+}
+div.furlFolderUnselected:hover {
+  background-color: #e6fff9;
+}
+div.furlFolderSelected {
+  background-color: #00ffbf;
+}
+div.furlFolderTop {
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+}
+div.furlFolderBottom {
+  border-bottom-left-radius: 5px;
+  border-bottom-right-radius: 5px;
+  border-bottom-width: 1px;
+}
+span.furlFolderTextArea {
+  display: inline-block;
+  width: 80%;
+}
+span.furlFolderRightIconArea {
+  display: inline-block;
+  width: 15%;
+  text-align: right;
+}
+
+div.furlTitleWithBackLink {
+  width: 80%;
+  padding: 10px;
+  font-size: x-large;
+  font-weight: bold;
+  border-top-width: 0px;
+  border-left-width: 0px;
+  border-right-width: 0px;
+  border-bottom-width: 0px;
+  border-style: solid;
+  border-top-color: lightgrey;
+  border-left-color: lightgrey;
+  border-right-color: darkgrey;
+  border-bottom-color: darkgrey;
+}
+div.furlTitleWithBackLink:hover {
+  background-color: #e6fff9;
+}
+span.furlTitleWithBackLinkTextArea {
+  display: inline-block;
+  width: 80%;
+}
+span.furlTitleWithBackLinkIconArea {
+  display: inline-block;
+  width: 15%;
+  text-align: left;
+}
+

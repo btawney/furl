@@ -212,43 +212,47 @@
       cell.appendChild(button);
     };
 
+    // We do not want to add the "add" button in the preprocessing phase or
+    // it will become part of the model
     if ('add' in binding.attributes) {
-      var addBody = document.createElement('TBODY');
-      if (binding.tBody.nextElementSibling == null) {
-        binding.element.appendChild(addBody);
-      } else {
-        binding.element.insertBefore(addBody, binding.tBody.nextElementSibling);
-      }
-      var row = addBody.insertRow();
-      var cell = row.insertCell();
-      cell.colSpan = 100;
-      cell.style.textAlign = 'CENTER';
-      var button = document.createElement('BUTTON');
-      button.innerText = 'Add';
-      cell.appendChild(button);
-      cell.addEventListener('click', function(evt) {
-        var newRow = binding.rowTemplate.cloneNode(true);
-        var rowBinding = newBinding(newRow);
-        binding.tBody.appendChild(newRow);
+      binding.postProcess = function() {
+        var addBody = document.createElement('TBODY');
+        if (binding.tBody.nextElementSibling == null) {
+          binding.element.appendChild(addBody);
+        } else {
+          binding.element.insertBefore(addBody, binding.tBody.nextElementSibling);
+        }
+        var row = addBody.insertRow();
+        var cell = row.insertCell();
+        cell.colSpan = 100;
+        cell.style.textAlign = 'CENTER';
+        var button = document.createElement('BUTTON');
+        button.innerText = 'Add';
+        cell.appendChild(button);
+        cell.addEventListener('click', function(evt) {
+          var newRow = binding.rowTemplate.cloneNode(true);
+          var rowBinding = newBinding(newRow);
+          binding.tBody.appendChild(newRow);
 
 //console.log(namespace);
-        interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
-          .then(function(bindings, scripts) {
+          interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
+            .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
-            rowBinding.addToModel(bindings);
-            if ('delete' in binding.attributes) {
-              binding.appendDeleteButton(rowBinding);
-            }
+              rowBinding.addToModel(bindings);
+              if ('delete' in binding.attributes) {
+                binding.appendDeleteButton(rowBinding);
+              }
 
-            binding.unnamed.push(rowBinding);
-            rowBinding.par = binding;
-            rowBinding.addChangeListener(binding.notifyChange);
-            rowBinding.focus();
-          });
+              binding.unnamed.push(rowBinding);
+              rowBinding.par = binding;
+              rowBinding.addChangeListener(binding.notifyChange);
+              rowBinding.focus();
+            });
 
-        binding.notifyChange();
-      });
+          binding.notifyChange();
+        });
+      };
     }
   </script>
 </class>
@@ -269,6 +273,7 @@
               interpretChildElements(binding.element, pageNamespace)
                 .then(function(bindings, scripts) {
                 binding.addToModel(bindings);
+//console.log('About to run scripts');
                 binding.runScripts(scripts);
                 binding.setValueFromDataSource();
 //console.log('Processing done');
@@ -286,59 +291,78 @@
   </class>
   <script>
 //console.log('Processing script for router');
-    var contentTag = document.createElement('CONTENT');
-
-//console.log('About to interpret content');
-    interpretTag(contentTag, namespace).then(function(bs, ss) {
-//console.log('Done interpreting content');
-//console.log(bs);
-        // Copy the content binding model to the model for the tag itself
-      binding.model = bs[0].model;
-      binding.runScripts(ss);
-      binding.setValueFromDataSource();
-    });
 
     // Calling setValue on a router makes it show the specified page
-    binding.setValue = function(pageName) {
+    binding.setValue = function(directive) {
       binding.element.innerHTML = '';
 
 //console.log('Looking for page ' + pageName);
-      if (pageName in binding.model) {
+      if (directive.page in binding.model) {
 //console.log('Found page name');
-        binding.element.appendChild(binding.model[pageName].element);
-      } else if ('default' in binding.model) {
-//console.log('Found default page 1');
-        binding.element.appendChild(binding.model.default.element);
-      } else {
-        var defaultPage = null;
-        for (var name in binding.model) {
-          if ('default' in binding.model[name].attributes) {
-            defaultPage = binding.model[name].element;
+        var pageBinding = binding.model[directive.page];
+//console.log('About to notify show');
+//console.log(pageBinding);
+        pageBinding.notifyShow(directive.args);
+        binding.element.appendChild(pageBinding.element);
+      } else if (directive.page == '') {
+        for (var page in binding.model) {
+          if ('default' in binding.model[page].attributes) {
+            var pageBinding = binding.model[page];
+            pageBinding.notifyShow(directive.args);
+            binding.element.appendChild(pageBinding.element);
             break;
           }
-        }
-
-        if (defaultPage == null) {
-          for (var i = 0; i < binding.unnamed.length; ++i) {
-            if ('default' in binding.unnamed[i].attributes) {
-              defaultPage = binding.unnamed[i].element;
-              break;
-            }
-          }
-        }
-
-        if (defaultPage != null) {
-//console.log('Found default page 2');
-//console.log(binding);
-          binding.element.appendChild(defaultPage);
         }
       }
     }
 
 //console.log('Adding event listener');
-    window.addEventListener('popstate', function(evt) {
-      binding.setValue(document.location.hash.substr(1));
+    binding.popStateHandler = function(evt) {
+      var hash = document.location.hash.substr(1);
+      var indexOfQuestionMark = hash.indexOf('?');
+
+      if (indexOfQuestionMark == -1) {
+        var page = hash;
+        var args = {};
+      } else {
+        var page = hash.substr(0, indexOfQuestionMark);
+        var args = {};
+        var keyValuePairs = hash.substr(indexOfQuestionMark + 1).split('&');
+        for (var i = 0; i < keyValuePairs.length; ++i) {
+          var keyValuePair = keyValuePairs[i];
+          var indexOfEquals = keyValuePair.indexOf('=');
+          if (indexOfEquals == -1) {
+            args[keyValuePair] = true;
+          } else {
+            var key = keyValuePair.substr(0, indexOfEquals);
+            var value = keyValuePair.substr(indexOfEquals + 1);
+            args[key] = value;
+          }
+        }
+      }
+
+      binding.setValue({
+        page: page,
+        args: args
+      });
+    };
+
+    // Do not pass a "notifyShow" message on to children until they are shown
+    binding.notifyShow = function() {
+    };
+
+//console.log('About to interpret content');
+    var contentTag = document.createElement('CONTENT');
+
+    interpretTag(contentTag, namespace).then(function(bs, ss) {
+//console.log('Done interpreting content');
+//console.log(bs);
+      // Copy the content binding model to the model for the tag itself
+      binding.model = bs[0].model;
+      binding.runScripts(ss);
     });
+
+    window.addEventListener('popstate', binding.popStateHandler);
   </script>
 </class>
 
@@ -385,3 +409,165 @@
   </script>
 </class>
 
+<class name="folderlist" export>
+  <class name="folder">
+    <script>
+      binding.element = document.createElement('DIV');
+      var textHolder = document.createElement('SPAN');
+      var arrowHolder = document.createElement('SPAN');
+      textHolder.className = 'furlFolderTextArea';
+      arrowHolder.className = 'furlFolderRightIconArea';
+      binding.element.appendChild(textHolder);
+      binding.element.appendChild(arrowHolder);
+
+      binding.setValue = function(v) {
+        binding.original = v;
+        textHolder.innerText = v.label;
+
+        if (v.allowDelete) {
+          arrowHolder.style.color = 'red';
+          arrowHolder.style.fontWeight = 'bold';
+          arrowHolder.style.fontFamily = 'Arial';
+          arrowHolder.style.borderLeftColor = 'lightgrey';
+          arrowHolder.style.borderLeftWidth = '1px';
+          arrowHolder.style.borderLeftStyle = 'solid';
+          arrowHolder.innerText = 'X';
+
+          textHolder.addEventListener('click', function(evt) {
+            binding.par.deselectAll();
+            binding.select();
+            document.location.hash = '#' + v.page;
+          });
+
+          arrowHolder.addEventListener('click', function(evt) {
+            binding.par.deselectAll();
+            binding.select();
+            document.location.hash = '#' + v.deletePage;
+          });
+        } else {
+          arrowHolder.style.color = 'lightgrey';
+          arrowHolder.innerText = '>';
+
+          binding.element.addEventListener('click', function(evt) {
+            binding.par.deselectAll();
+            binding.select();
+            document.location.hash = '#' + v.page;
+          });
+        }
+
+        binding.deselect();
+      };
+
+      binding.deselect = function() {
+        var v = binding.original;
+
+        binding.element.className = v.classPrefix
+          + ' ' + v.classPrefix + 'Unselected';
+
+        if (v.isFirst) {
+          binding.element.className += ' ' + v.classPrefix + 'Top';
+        }
+
+        if (v.isLast) {
+          binding.element.className += ' ' + v.classPrefix + 'Bottom';
+        }
+      };
+
+      binding.select = function() {
+        var v = binding.original;
+
+        binding.element.className = v.classPrefix
+          + ' ' + v.classPrefix + 'Selected';
+
+        if (v.isFirst) {
+          binding.element.className += ' ' + v.classPrefix + 'Top';
+        }
+
+        if (v.isLast) {
+          binding.element.className += ' ' + v.classPrefix + 'Bottom';
+        }
+      };
+    </script>
+  </class>
+  <script>
+    var labelMember = 'label';
+    if ('label' in binding.attributes) {
+      labelMember = binding.attributes.label;
+    }
+
+    var pageMember = 'page';
+    if ('page' in binding.attributes) {
+      pageMember = binding.attributes.page;
+    }
+
+    var className = 'furlFolder';
+    if ('class' in binding.attributes) {
+      width = binding.attributes.class;
+    }
+
+    var deletePageMember = 'deletePage';
+    if ('deletepage' in binding.attributes) {
+      deletePageMember = binding.attributes.deletepage;
+    }
+
+    binding.setValue = function(v) {
+      binding.unnamed = [];
+      binding.element.innerHTML = '';
+
+      var last = v.length - 1;
+      for (var i = 0; i <= last; ++i) {
+        var tag = document.createElement('FOLDER');
+        interpretTag(tag, namespace).then(function(bs, ss) {
+          binding.unnamed.push(bs[0]);
+          bs[0].par = binding;
+          binding.runScripts(ss);
+          var allowDelete = (deletePageMember in v[i]);
+          var deletePage = (allowDelete ? v[i][deletePageMember] : '');
+
+          bs[0].setValue({
+            label: v[i][labelMember],
+            page: v[i][pageMember],
+            classPrefix: className,
+            isFirst: (i == 0),
+            isLast: (i == last),
+            allowDelete: allowDelete,
+            deletePage: deletePage
+          });
+
+          binding.element.appendChild(bs[0].element);
+        });
+      }
+    };
+
+    binding.deselectAll = function() {
+      for (var i = 0; i < binding.unnamed.length; ++i) {
+        binding.unnamed[i].deselect();
+      }
+    };
+  </script>
+</class>
+
+<class name="h1back" export>
+  <script>
+    var content = binding.element.innerHTML;
+    binding.element = document.createElement('DIV');
+    var textHolder = document.createElement('SPAN');
+    var arrowHolder = document.createElement('SPAN');
+    binding.element.className = 'furlTitleWithBackLink';
+    textHolder.className = 'furlTitleWithBackLinkTextArea';
+    arrowHolder.className = 'furlTitleWithBackLinkIconArea';
+    binding.element.appendChild(arrowHolder);
+    binding.element.appendChild(textHolder);
+
+    arrowHolder.style.color = 'lightgrey';
+    arrowHolder.innerText = '<<';
+
+    binding.element.addEventListener('click', function(evt) {
+      window.history.back();
+    });
+
+    binding.setValue = function(v) {
+      textHolder.innerText = v.toString();
+    };
+  </script>
+</class>

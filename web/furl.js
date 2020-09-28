@@ -1,6 +1,10 @@
 // furl.js
 
 var furl = (function() {
+  // For debugging
+  var globals = {
+  };
+
   var trace = {
     active: 0,
     activate: function() {
@@ -123,7 +127,10 @@ var furl = (function() {
           console.log('Warning: User has no permission to delete from collection');
         }
 
-        data.deleteQueue[item] = c[item];
+        if (!(collection in data.deleteQueue)) {
+          data.deleteQueue[collection] = {};
+        }
+        data.deleteQueue[collection][item] = c[item];
         delete c[item];
       }
     },
@@ -218,7 +225,7 @@ var furl = (function() {
         }
       };
 
-      trace.message('data.processQueue: Senting update request');
+      trace.message('data.processQueue: Sending update request');
       xhttp.open('PUT', 'update.php', true);
 //console.log(JSON.stringify(message));
       xhttp.send(JSON.stringify(message));
@@ -258,7 +265,7 @@ var furl = (function() {
     }
   };
 
-  window.setInterval(data.processQueue, 10000);
+  window.setInterval(data.processQueue, 1000);
 
   var namespace = function(parents) {
     var ns = {
@@ -459,7 +466,7 @@ var furl = (function() {
               fn(binding, namespace);
             } catch (e2) {
               console.log('Error evaluating script: ' + e2.toString());
-//console.log(scripts[i]);
+              console.log(scripts[i]);
             }
           } catch (e1) {
             console.log('Syntax error in script: ' + e1.toString());
@@ -470,6 +477,7 @@ var furl = (function() {
 
       setValueFromDataSource: function() {
         if ('bind' in binding.attributes) {
+//console.log('Setting value from data source');
           var dataPath = binding.attributes['bind'];
           var indexOfDot = dataPath.indexOf('.');
           if (indexOfDot == -1) {
@@ -498,6 +506,21 @@ var furl = (function() {
           binding.unnamed[i].focus();
           return;
         }
+      },
+
+      postProcess: function() {
+      },
+
+      notifyShow: function() {
+        binding.setValueFromDataSource();
+
+        for (var name in binding.model) {
+          binding.model[name].notifyShow();
+        }
+
+        for (var i = 0; i < binding.unnamed.length; ++i) {
+          binding.unnamed[i].notifyShow();
+        }
       }
     };
 
@@ -507,6 +530,9 @@ var furl = (function() {
     }
 
 //console.log(binding.debugPath());
+    if ('global' in binding.attributes) {
+      globals[binding.attributes.global] = binding;
+    }
 
     return binding;
   };
@@ -600,7 +626,8 @@ var furl = (function() {
           .then(function(bindings, scripts) {
           binding.addToModel(bindings);
           binding.runScripts(scripts, ns);
-          binding.setValueFromDataSource();
+          //binding.setValueFromDataSource();
+          binding.postProcess();
           prom.fulfill([binding], []);
         });
       } else if ('name' in element.attributes) {
@@ -612,7 +639,8 @@ var furl = (function() {
           .then(function(bindings, scripts) {
           binding.addToModel(bindings);
           binding.runScripts(scripts, ns);
-          binding.setValueFromDataSource();
+          //binding.setValueFromDataSource();
+          binding.postProcess();
           prom.fulfill([binding], []);
         });
       } else {
@@ -713,7 +741,7 @@ var furl = (function() {
           .then(function(bindings, scripts) {
             contentBinding.addToModel(bindings);
             contentBinding.runScripts(scripts, contentNamespace);
-            contentBinding.setValueFromDataSource();
+            //contentBinding.setValueFromDataSource();
 
             if (e.parentElement != null) {
               var par = e.parentElement;
@@ -721,6 +749,7 @@ var furl = (function() {
               par.removeChild(e);
             }
 
+            contentBinding.postProcess();
             contentPromise.fulfill([contentBinding], []);
           });
 
@@ -754,8 +783,9 @@ var furl = (function() {
         function(bindings, scripts) {
           instanceBinding.addToModel(bindings);
           instanceBinding.runScripts(scripts, instanceNamespace);
-          instanceBinding.setValueFromDataSource();
+          //instanceBinding.setValueFromDataSource();
 //console.log('Fulfilling class instance promise');
+          instanceBinding.postProcess();
           instancePromise.fulfill([instanceBinding], []);
         });
 
@@ -783,6 +813,45 @@ var furl = (function() {
     return classPromise;
   });
 
+  var sourceCache = {};
+
+  var interpretLibrary = function(libraryContent, declaringNamespace, usingElement) {
+    var prom = promise();
+
+    // Library bindings don't need parents
+    var libraryBinding = newBinding(document.createElement('SPAN'));
+    libraryBinding.element.innerHTML = libraryContent;
+    var libraryNamespace = root.newLibraryNamespace(
+      usingElement.attributes.src.value);
+    interpretTag(libraryBinding.element, libraryNamespace)
+      .then(function(bindings, libraryScripts) {
+        // Import everything from the library into this namespace
+        var contentNamespace = declaringNamespace.newChildNamespace('USING');
+        for (var name in libraryNamespace.exported) {
+          contentNamespace.set(name, libraryNamespace.exported[name]);
+        }
+
+        var usingBinding = newBinding(usingElement);
+        usingBinding.element = document.createElement('SPAN');
+        usingBinding.element.innerHTML = usingElement.innerHTML;
+        interpretChildElements(usingBinding.element, contentNamespace)
+          .then(function(bindings, scripts) {
+          if (usingElement.parentElement != null) {
+            var par = usingElement.parentElement;
+            par.insertBefore(usingBinding.element, usingElement);
+            par.removeChild(usingElement);
+          }
+
+          usingBinding.postProcess();
+          // Not sure about scripts...who will execute these, and where should
+          // libraryScripts be executed?
+          prom.fulfill(bindings, scripts);
+        });
+      });
+
+    return prom;
+  };
+
   root.set('USING', function(element, declaringNamespace) {
     var prom = promise();
 
@@ -793,43 +862,19 @@ var furl = (function() {
     }
 //console.log('399: USING ' + element.attributes.src.value);
 
+    var path = element.attributes.src.value;
+    if (path in sourceCache) {
+      return interpretLibrary(sourceCache[path], declaringNamespace, element);
+    }
+
     var xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
       if (xhttp.readyState == 4) {
         if (xhttp.status == 200) {
-          // Library bindings don't need parents
-          var libraryBinding = newBinding(document.createElement('SPAN'));
-          libraryBinding.element.innerHTML = xhttp.responseText;
-          var libraryNamespace = root.newLibraryNamespace(
-            element.attributes.src.value);
-          interpretTag(libraryBinding.element, libraryNamespace)
-            .then(function(bindings) {
-              // Import everything from the library into this namespace
-              var contentNamespace = declaringNamespace.newChildNamespace('USING');
-              for (var name in libraryNamespace.exported) {
-                contentNamespace.set(name, libraryNamespace.exported[name]);
-              }
-
-              var usingBinding = newBinding(element);
-              usingBinding.element = document.createElement('SPAN');
-              usingBinding.element.innerHTML = element.innerHTML;
-
-//console.log('About to process children of ' + sourceContext);
-//console.log(element.outerHTML);
-              interpretChildElements(usingBinding.element, contentNamespace)
-                .then(function(bindings, scripts) {
-                if (element.parentElement != null) {
-                  var par = element.parentElement;
-                  par.insertBefore(usingBinding.element, element);
-                  par.removeChild(element);
-                }
-
-//console.log('434: Fulfilling promise for USING ' + element.attributes.src.value);
-                // We don't want the USING binding to be part of the binding
-                // tree, so just pass back all of the child bindings to
-                // whatever included the USING binding itself
-                prom.fulfill(bindings, scripts);
-              });
+          sourceCache[path] = xhttp.responseText;
+          interpretLibrary(xhttp.responseText, declaringNamespace, element)
+            .then(function(bs, ss) {
+              prom.fulfill(bs, ss);
             });
         } else {
           console.log('Error retrieving remote content: '
@@ -838,7 +883,7 @@ var furl = (function() {
         }
       }
     };
-    xhttp.open('GET', element.attributes.src.value + '?' + data.sessionId, true);
+    xhttp.open('GET', path + '?' + data.sessionId, true);
     xhttp.send();
 
     return prom;
@@ -867,7 +912,8 @@ var furl = (function() {
       p.then(function(bs, scripts) {
         binding.addToModel(bs);
         binding.runScripts(scripts, ns);
-        binding.setValueFromDataSource();
+        binding.notifyShow();
+        binding.postProcess();
         prom.fulfill(binding, []);
       });
       return prom;
@@ -891,9 +937,10 @@ var furl = (function() {
               .then(function(bs, scripts) {
                 binding.addToModel(bs);
                 binding.runScripts(scripts, ns);
-                binding.setValueFromDataSource(scripts);
+                binding.notifyShow();
                 targetToUse.innerHTML = '';
                 targetToUse.appendChild(binding.element);
+                binding.postProcess();
                 prom.fulfill(binding, []);
               });
           } else {
@@ -904,12 +951,14 @@ var furl = (function() {
 
       xhttp.open('GET', url + '?' + data.sessionId, true);
       xhttp.send(); 
+
+      return prom;
     },
     data: data,
     trace: trace,
 
     // For debugging
-    global: {}
+    global: globals
   };
 
   return furl;
