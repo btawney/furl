@@ -4,7 +4,7 @@
     <lexicalentry name="lex" bind="newlex"></lexicalentry>
     <button name="save">Save and Add New</button>
     <script>
-      furl.global.lex = binding;
+      furl.global = {lex: binding};
 
       binding.model.save.element.addEventListener('click', function(evt) {
         var entry = binding.model.lex.getValue();

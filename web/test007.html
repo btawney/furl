@@ -7,7 +7,7 @@
       function onLoad() {
         furl.process(document.body).then(function(b) {
           binding = b;
-          binding.addChangeListener(function() {
+          binding.addEventListener('change', function() {
             console.log('Changed!');
           });
         });

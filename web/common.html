@@ -1,5 +1,5 @@
 <class name="literal" export>
-  <script>
+  <script name="init">
     binding.original = '';
     binding.setValue = function(v) {
       binding.original = v;
@@ -13,14 +13,14 @@
 
 <class name="list" export>
   <class name="index">
-    <script>
+    <script name="init">
       var index = namespace.get('LIST(INDEX)');
       binding.element.innerText = index.toString();
       namespace.setAtDefinition('LIST(INDEX)', index + 1);
 //console.log(namespace);
     </script>
   </class>
-  <script>
+  <script name="init">
     binding.listPart = document.createElement('SPAN');
 
     namespace.set('LIST(INDEX)', 1);
@@ -40,7 +40,7 @@
         interpretTag(contentTag, namespace)
           .then(function(elementBindings, scripts) {
             binding.addToModel(elementBindings);
-            binding.runScripts(scripts);
+            binding.addEvents(scripts, namespace);
 
             if ('delete' in binding.attributes) {
               binding.appendDeleteButton(elementBindings[0]);
@@ -102,7 +102,7 @@
         interpretTag(contentTag, namespace)
           .then(function(elementBindings, scripts) {
             binding.addToModel(elementBindings);
-            binding.runScripts(scripts);
+            binding.addEvents(scripts, namespace);
 
             if ('delete' in binding.attributes) {
               binding.appendDeleteButton(elementBindings[0]);
@@ -130,7 +130,7 @@
 </class>
 
 <class name="table.dynamic" native export>
-  <script preprocess>
+  <script name="init">
 //console.log('Processing table dynamic');
     // The first tr inside a tbody will be treated as a template
     binding.tBody = null;
@@ -166,9 +166,10 @@
 
         var newRow = binding.rowTemplate.cloneNode(true);
 
-        var rowBinding = newBinding(newRow);
+        var rowBinding = newBinding(newRow,
+          binding.sourceLocation + '.*TR1');
         binding.tBody.appendChild(newRow);
-        interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
+        interpretChildElements(newRow, namespace.newChildNamespace())
           .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
@@ -180,7 +181,7 @@
 
             binding.unnamed.push(rowBinding);
             rowBinding.par = binding;
-            rowBinding.addChangeListener(binding.notifyChange);
+            rowBinding.addEventListener('change', binding.notifyChange);
 
             recurse(i - 1);
           });
@@ -190,6 +191,7 @@
         recurse(v.length);
       }
     };
+
     binding.getValue = function() {
       var result = [];
       for (var i = 0; i < binding.unnamed.length; ++i) {
@@ -215,7 +217,7 @@
     // We do not want to add the "add" button in the preprocessing phase or
     // it will become part of the model
     if ('add' in binding.attributes) {
-      binding.postProcess = function() {
+      binding.addEventListener('init', function() {
         var addBody = document.createElement('TBODY');
         if (binding.tBody.nextElementSibling == null) {
           binding.element.appendChild(addBody);
@@ -231,11 +233,12 @@
         cell.appendChild(button);
         cell.addEventListener('click', function(evt) {
           var newRow = binding.rowTemplate.cloneNode(true);
-          var rowBinding = newBinding(newRow);
+          var rowBinding = newBinding(newRow,
+            binding.sourceLocation + '.*TR2');
           binding.tBody.appendChild(newRow);
 
 //console.log(namespace);
-          interpretChildElements(newRow, namespace.newChildNamespace('TABLEITEM'))
+          interpretChildElements(newRow, namespace.newChildNamespace())
             .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
@@ -246,13 +249,13 @@
 
               binding.unnamed.push(rowBinding);
               rowBinding.par = binding;
-              rowBinding.addChangeListener(binding.notifyChange);
+              rowBinding.addEventListener('change', binding.notifyChange);
               rowBinding.focus();
             });
 
           binding.notifyChange();
         });
-      };
+      });
     }
   </script>
 </class>
@@ -260,7 +263,7 @@
 <class name="router" export>
   <class name="page">
     <content></content>
-    <script>
+    <script name="init">
       if ('src' in binding.attributes) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function() {
@@ -269,12 +272,12 @@
               binding.element.innerHTML = xhttp.responseText;
 
               // Remote resources should be evaluated in their own namespaces
-              var pageNamespace = root.newChildNamespace('ROUTERPAGE');
+              var pageNamespace = root.newChildNamespace();
               interpretChildElements(binding.element, pageNamespace)
                 .then(function(bindings, scripts) {
                 binding.addToModel(bindings);
 //console.log('About to run scripts');
-                binding.runScripts(scripts);
+                binding.addEvents(scripts, namespace);
                 binding.setValueFromDataSource();
 //console.log('Processing done');
               });
@@ -289,19 +292,13 @@
       }
     </script>
   </class>
-  <script>
-//console.log('Processing script for router');
-
+  <script name="init">
     // Calling setValue on a router makes it show the specified page
     binding.setValue = function(directive) {
       binding.element.innerHTML = '';
 
-//console.log('Looking for page ' + pageName);
       if (directive.page in binding.model) {
-//console.log('Found page name');
         var pageBinding = binding.model[directive.page];
-//console.log('About to notify show');
-//console.log(pageBinding);
         pageBinding.notifyShow(directive.args);
         binding.element.appendChild(pageBinding.element);
       } else if (directive.page == '') {
@@ -355,11 +352,9 @@
     var contentTag = document.createElement('CONTENT');
 
     interpretTag(contentTag, namespace).then(function(bs, ss) {
-//console.log('Done interpreting content');
-//console.log(bs);
       // Copy the content binding model to the model for the tag itself
       binding.model = bs[0].model;
-      binding.runScripts(ss);
+      binding.addEvents(ss, namespace);
     });
 
     window.addEventListener('popstate', binding.popStateHandler);
@@ -367,7 +362,7 @@
 </class>
 
 <class name="roster" export>
-  <script>
+  <script name="init">
     // The body of a roster is a list of elements, each of which will get its own row in a table
     var originalElement = binding.element;
     binding.element = document.createElement('TABLE');
@@ -380,7 +375,7 @@
         var row = binding.element.insertRow();
         var cell = row.insertCell();
         cell.appendChild(bindings[i].element);
-        binding.runScripts(scripts);
+        binding.addEvents(scripts, namespace);
       }
     });
   </script>
@@ -388,7 +383,7 @@
 
 <class name="checkbox" export>
   <input type="checkbox"></input>
-  <script>
+  <script name="init">
     binding.inputElement = binding.element.firstElementChild;
 
     binding.getValue = function() {
@@ -411,7 +406,7 @@
 
 <class name="folderlist" export>
   <class name="folder">
-    <script>
+    <script name="init">
       binding.element = document.createElement('DIV');
       var textHolder = document.createElement('SPAN');
       var arrowHolder = document.createElement('SPAN');
@@ -489,7 +484,7 @@
       };
     </script>
   </class>
-  <script>
+  <script name="init">
     var labelMember = 'label';
     if ('label' in binding.attributes) {
       labelMember = binding.attributes.label;
@@ -520,7 +515,7 @@
         interpretTag(tag, namespace).then(function(bs, ss) {
           binding.unnamed.push(bs[0]);
           bs[0].par = binding;
-          binding.runScripts(ss);
+          binding.addEvents(ss, namespace);
           var allowDelete = (deletePageMember in v[i]);
           var deletePage = (allowDelete ? v[i][deletePageMember] : '');
 
@@ -548,7 +543,7 @@
 </class>
 
 <class name="h1back" export>
-  <script>
+  <script name="init">
     var content = binding.element.innerHTML;
     binding.element = document.createElement('DIV');
     var textHolder = document.createElement('SPAN');

@@ -6,7 +6,7 @@ Address: <span name="address"><br />
  &nbsp; State: <input name="state"><br />
  &nbsp; ZIP: <input name="zip"><br />
 </span>
-<script>
+<script name="init">
 var oldSetValue = binding.setValue;
 binding.setValue = function(v) {
   v.name = v.name.toUpperCase();
