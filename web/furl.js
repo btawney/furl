@@ -318,7 +318,7 @@ var furl = (function() {
         prom = newPromise();
         if (s.fn == null) {
           try {
-            eval('s.fn = function() {' + scriptBody + '}');
+            eval('s.fn = function(args) {' + scriptBody + '}');
           } catch (error) {
             console.log('Syntax error in script at ' + sourceLocation);
             console.log(error);
@@ -435,17 +435,17 @@ var furl = (function() {
         }
       },
 
-      notifyShow: function() {
-        binding.notifyEvent('show');
+      notifyShow: function(args) {
+        binding.notifyEvent('show', args);
 
         binding.setValueFromDataSource();
 
         for (var name in binding.model) {
-          binding.model[name].notifyShow();
+          binding.model[name].notifyShow(args);
         }
 
         for (var i = 0; i < binding.unnamed.length; ++i) {
-          binding.unnamed[i].notifyShow();
+          binding.unnamed[i].notifyShow(args);
         }
       },
 
@@ -732,12 +732,19 @@ var furl = (function() {
       var instanceNamespace
         = definingNamespace.newChildNamespace([includingNamespace]);
 
-      // Define the <CONTENT> tag so it can be referenced within the class
-      // 
+      // Define the <CONTENT> tag so it can be referenced within the class.
       instanceNamespace.set('CONTENT', function(e, n, contentSourceLocation) {
+        // If the class creates an instance of the CONTENT tag, it doesn't
+        // need to know the instance source location
+        if (contentSourceLocation == null) {
+          var sourceLocationToUse = instanceSourceLocation;
+        } else {
+          var sourceLocationToUse = contentSourceLocation;
+        }
+
         var contentBinding = newBinding(
           document.createElement('SPAN'),
-          contentSourceLocation);
+          sourceLocationToUse);
         var contentPromise = newPromise();
         // Evaluate content in a combination of the defining namespace and
         // the declaring namespace
@@ -747,7 +754,7 @@ var furl = (function() {
         contentBinding.element.innerHTML = element.innerHTML + e.innerHTML;
 
         interpretChildElements(contentBinding.element, contentNamespace,
-          contentSourceLocation)
+          sourceLocationToUse)
           .then(function(bindings, scripts) {
             contentBinding.addToModel(bindings);
             contentBinding.addEvents(scripts, contentNamespace);
@@ -847,7 +854,8 @@ var furl = (function() {
         var usingBinding = newBinding(usingElement, usingSourceLocation);
         usingBinding.element = document.createElement('SPAN');
         usingBinding.element.innerHTML = usingElement.innerHTML;
-        interpretChildElements(usingBinding.element, contentNamespace)
+        interpretChildElements(usingBinding.element, contentNamespace,
+          usingSourceLocation)
           .then(function(bindings, scripts) {
           if (usingElement.parentElement != null) {
             var par = usingElement.parentElement;

@@ -169,7 +169,8 @@
         var rowBinding = newBinding(newRow,
           binding.sourceLocation + '.*TR1');
         binding.tBody.appendChild(newRow);
-        interpretChildElements(newRow, namespace.newChildNamespace())
+        interpretChildElements(newRow, namespace.newChildNamespace(),
+          binding.sourceLocation + '.*TR1')
           .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
@@ -238,7 +239,8 @@
           binding.tBody.appendChild(newRow);
 
 //console.log(namespace);
-          interpretChildElements(newRow, namespace.newChildNamespace())
+          interpretChildElements(newRow, namespace.newChildNamespace(),
+            binding.sourceLocation + '.*TR2')
             .then(function(bindings, scripts) {
 //console.log(b);
 //console.log(b);
@@ -264,21 +266,34 @@
   <class name="page">
     <content></content>
     <script name="init">
+      binding.showingArgs = null;
+
       if ('src' in binding.attributes) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function() {
           if (xhttp.readyState == 4) {
             if (xhttp.status == 200) {
-              binding.element.innerHTML = xhttp.responseText;
+              binding.model.target = newBinding(document.createElement('SPAN'),
+                binding.attributes.src);
+              binding.model.target.element.innerHTML = xhttp.responseText;
+
+              binding.element.appendChild(binding.model.target.element);
 
               // Remote resources should be evaluated in their own namespaces
               var pageNamespace = root.newChildNamespace();
-              interpretChildElements(binding.element, pageNamespace)
+              interpretChildElements(binding.model.target.element,
+                pageNamespace, binding.attributes.src)
                 .then(function(bindings, scripts) {
-                binding.addToModel(bindings);
+                binding.model.target.addToModel(bindings);
 //console.log('About to run scripts');
-                binding.addEvents(scripts, namespace);
-                binding.setValueFromDataSource();
+                binding.model.target.addEvents(scripts, pageNamespace);
+                binding.model.target.notifyInit();
+
+                // Special case, there is a chance that we tried to show
+                // this page before it was loaded. If so, show it now
+                if (binding.showingArgs != null) {
+                  binding.notifyShow(binding.showingArgs);
+                }
 //console.log('Processing done');
               });
             } else {
@@ -295,17 +310,27 @@
   <script name="init">
     // Calling setValue on a router makes it show the specified page
     binding.setValue = function(directive) {
+//console.log(['showing page', directive]);
       binding.element.innerHTML = '';
+
+      for (var p in binding.model) {
+        binding.model[p].showingArgs = null;
+      }
 
       if (directive.page in binding.model) {
         var pageBinding = binding.model[directive.page];
-        pageBinding.notifyShow(directive.args);
+        pageBinding.showingArgs = directive.args;
+        if ('target' in pageBinding.model) {
+          pageBinding.model.target.notifyShow(directive.args);
+        }
         binding.element.appendChild(pageBinding.element);
       } else if (directive.page == '') {
         for (var page in binding.model) {
           if ('default' in binding.model[page].attributes) {
             var pageBinding = binding.model[page];
-            pageBinding.notifyShow(directive.args);
+            if ('target' in pageBinding.model) {
+              pageBinding.model.target.notifyShow(directive.args);
+            }
             binding.element.appendChild(pageBinding.element);
             break;
           }
@@ -555,10 +580,14 @@
     binding.element.appendChild(textHolder);
 
     arrowHolder.style.color = 'lightgrey';
-    arrowHolder.innerText = '<<';
+    arrowHolder.innerText = '<';
 
     binding.element.addEventListener('click', function(evt) {
-      window.history.back();
+      if ('href' in binding.attributes) {
+        document.location = binding.attributes.href;
+      } else {
+        window.history.back;
+      }
     });
 
     binding.setValue = function(v) {
